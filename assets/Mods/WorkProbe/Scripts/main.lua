@@ -176,18 +176,30 @@ end
 local scan_errors = {}
 local function scan_one(object, name)
     if name:find("PalBaseCampModel", 1, true) and not name:find("Default__", 1, true) and not is_reflection(name) then
-        local id = read_any(object, "ID")
-        local transform = read_any(object, "Transform")
-        local sig = read_any(object, "SignificanceInfo")
-        local entry = classify_struct(id, "id")
+        -- v1.8.3: struct PROPERTY reads return opaque TrivialObject on this
+        -- fork (FGuid/FTransform/SignificanceInfo all unresolved). PSO proves
+        -- UFUNCTION struct returns DO resolve (velocity.X from GetVelocity),
+        -- so use the BlueprintPure accessors: GetTransform() and GetId().
+        local id = "?"
+        local okid, idv = pcall(function() return object:GetId() end)
+        if okid and idv ~= nil then id = classify_struct(idv, "id") end
+        local tf = "?"
+        local oktf, tfv = pcall(function() return object:GetTransform() end)
+        if oktf and tfv ~= nil then tf = classify_struct(tfv, "tf") end
+        local entry = "camp#" .. tostring(#camp_models + 1)
         camp_models[#camp_models + 1] = entry
-        camp_locations[entry] = classify_struct(transform, "tf")
-        camp_significance[entry] = classify_struct(sig, "sig")
+        camp_locations[entry] = tf
+        camp_significance[entry] = id
     elseif name:find("PalWorkProgress", 1, true) and not name:find("PalWorkProgressManager", 1, true)
         and not name:find("Default__", 1, true) and not name:find("Class ", 1, true) and not name:find("Function ", 1, true) then
-        local camp = read_any(object, "BaseCampIdBelongTo")
-        local camp_str = classify_struct(camp, "camp")
-        work_camps[name] = camp_str
+        -- work→camp: BaseCampIdBelongTo is a struct property (TrivialObject).
+        -- Try the BlueprintPure GetId() for the work identity; the camp
+        -- association itself stays unresolved on this fork unless GetId()
+        -- FGuid members resolve (classify_struct tries A/B/C/D).
+        local camp = "?"
+        local okc, campv = pcall(function() return object:GetId() end)
+        if okc and campv ~= nil then camp = classify_struct(campv, "workid") end
+        work_camps[name] = camp
     end
 end
 
