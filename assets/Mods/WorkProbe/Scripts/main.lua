@@ -174,8 +174,20 @@ local function is_reflection(name)
 end
 
 local scan_errors = {}
+local player_locations = {}
+
+local function class_token(name)
+    return name:match("^(%S+)") or "?"
+end
+
 local function scan_one(object, name)
-    if name:find("PalBaseCampModel", 1, true) and not name:find("Default__", 1, true) and not is_reflection(name) then
+    local token = class_token(name)
+    -- v1.8.4: match the CLASS TOKEN exactly (like the control census) —
+    -- substring matching caught path noise (the live work instances contain
+    -- the manager's name in their path; 127 pseudo-camps were Blueprint/reflection
+    -- noise). Live camp instances are "PalBaseCampModel ..."; live work
+    -- instances are "PalWorkProgress ..." / "PalWorkProgressMultiType ...".
+    if token == "PalBaseCampModel" then
         -- v1.8.3: struct PROPERTY reads return opaque TrivialObject on this
         -- fork (FGuid/FTransform/SignificanceInfo all unresolved). PSO proves
         -- UFUNCTION struct returns DO resolve (velocity.X from GetVelocity),
@@ -190,8 +202,7 @@ local function scan_one(object, name)
         camp_models[#camp_models + 1] = entry
         camp_locations[entry] = tf
         camp_significance[entry] = id
-    elseif name:find("PalWorkProgress", 1, true) and not name:find("PalWorkProgressManager", 1, true)
-        and not name:find("Default__", 1, true) and not name:find("Class ", 1, true) and not name:find("Function ", 1, true) then
+    elseif token == "PalWorkProgress" or token == "PalWorkProgressMultiType" then
         -- work→camp: BaseCampIdBelongTo is a struct property (TrivialObject).
         -- Try the BlueprintPure GetId() for the work identity; the camp
         -- association itself stays unresolved on this fork unless GetId()
@@ -200,6 +211,11 @@ local function scan_one(object, name)
         local okc, campv = pcall(function() return object:GetId() end)
         if okc and campv ~= nil then camp = classify_struct(campv, "workid") end
         work_camps[name] = camp
+    elseif token == "BP_PlayerCharacter_C" or token == "PalPlayerCharacter" then
+        local okp, loc = pcall(function() return object:K2_GetActorLocation() end)
+        if okp and loc ~= nil then
+            player_locations[#player_locations + 1] = classify_struct(loc, "player")
+        end
     end
 end
 
@@ -208,6 +224,7 @@ local function scan_camps_and_work()
     camp_locations = {}
     work_camps = {}
     camp_significance = {}
+    player_locations = {}
     scan_errors = {}
     ForEachUObject(function(object)
         if not is_valid(object) then return end
@@ -452,6 +469,7 @@ local function probe_tick()
     local camp_line = string.format("%d camps=%d sigs=%s locs=%s",
         now, #camp_models, table.concat(camp_significance, " | "), table.concat(camp_locations, " | "))
     append_line(camp_line)
+    append_line(string.format("%d players=%s", now, table.concat(player_locations, " | ")))
     if #scan_errors > 0 then
         append_line(string.format("%d scan_errors: %s", now, table.concat(scan_errors, " ; ")))
     end
