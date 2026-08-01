@@ -153,7 +153,9 @@ local function classify_struct(value, label)
     if value == nil then return label .. "=nil" end
     if type(value) == "table" then
         local parts = {}
-        for _, member in ipairs({"X", "Y", "Z", "W"}) do
+        -- FGuid tables carry A/B/C/D; FTransform tables carry X/Y/Z/W — probe
+        -- BOTH sets (absent members just fail the pcall and are skipped).
+        for _, member in ipairs({"A", "B", "C", "D", "X", "Y", "Z", "W"}) do
             local ok, v = pcall(function() return value[member] end)
             if ok and v ~= nil then
                 local resolved = v
@@ -242,10 +244,20 @@ local function scan_one(object, name)
         local wc = "?"
         local okwc, wcv = pcall(function() return object:GetWorkCollection() end)
         if okwc and wcv ~= nil then
-            -- WorkIds is a TArray property (property style read; the array
-            -- pusher iterates it if the inner type has a registered handler)
-            local okwids, wids = pcall(function() return wcv["WorkIds"] end)
-            if okwids and wids ~= nil then wc = classify_struct(wids, "wc") end
+            -- WorkIds is a TArray<FGuid> property; the array pusher builds a
+            -- Lua table IF the inner has a registered handler (FGuid may not).
+            -- Try property read, then :get() on the array wrapper.
+            local wids = nil
+            local okwids = pcall(function() wids = wcv["WorkIds"] end)
+            if not okwids or wids == nil then
+                pcall(function() wids = wcv.WorkIds end)
+            end
+            if wids ~= nil then
+                local resolved = wids
+                local ok2, got = pcall(function() return wids:get() end)
+                if ok2 and got ~= nil then resolved = got end
+                wc = classify_struct(resolved, "wc")
+            end
         end
         local entry = "camp#" .. tostring(#camp_models + 1)
         camp_models[#camp_models + 1] = entry
