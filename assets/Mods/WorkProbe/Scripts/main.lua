@@ -146,6 +146,10 @@ local function classify_struct(value, label)
     -- pattern (PSO get_remote_value) is member:get() to resolve remote values.
     -- v1.8.6: struct members that are themselves structs come back as Lua
     -- TABLES (Translation=table:...) — recurse one level for X/Y/Z.
+    -- v1.8.7 FIX: NEVER recurse into non-table values — TrivialObject member
+    -- reads return THEMSELVES (same address), so unbounded recursion on a
+    -- TrivialObject loops forever → Lua stack overflow → game thread wedge.
+    -- Recursion is bounded: tables only, one level, X/Y/Z/W members only.
     if value == nil then return label .. "=nil" end
     if type(value) == "table" then
         local parts = {}
@@ -170,7 +174,13 @@ local function classify_struct(value, label)
             local resolved = v
             local ok2, got = pcall(function() return v:get() end)
             if ok2 and got ~= nil then resolved = got end
-            summary[#summary + 1] = member .. "=" .. classify_struct(resolved, "")
+            -- only recurse into TABLES (bounded, one level); anything else
+            -- is a scalar → tostring it (TrivialObjects would self-loop)
+            if type(resolved) == "table" then
+                summary[#summary + 1] = member .. "=" .. classify_struct(resolved, "")
+            else
+                summary[#summary + 1] = member .. "=" .. tostr_safe(resolved)
+            end
         end
     end
     if #summary > 0 then
