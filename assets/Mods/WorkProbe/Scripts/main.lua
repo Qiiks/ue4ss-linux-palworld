@@ -272,17 +272,43 @@ local function scan_one(object, name)
         local okc, campv = pcall(function() return object:GetId() end)
         if okc and campv ~= nil then camp = classify_struct(campv, "workid") end
         local loc = "?"
+        local locx, locy, locz = nil, nil, nil
         local okm, model = pcall(function() return object["CachedOwnerMapObjectConcreteModel"] end)
         if okm and model ~= nil then
             local oka, actor = pcall(function() return model:GetActor() end)
             if oka and actor ~= nil then
                 local okl, pos = pcall(function() return actor:K2_GetActorLocation() end)
-                if okl and pos ~= nil then loc = classify_struct(pos, "loc") end
+                if okl and pos ~= nil then
+                    loc = classify_struct(pos, "loc")
+                    -- pull X/Y/Z out of the loc string for distance math
+                    locx, locy, locz = loc:match("X=(-?%d+%.?%d*),Y=(-?%d+%.?%d*),Z=(-?%d+%.?%d*)")
+                    if locx then locx, locy, locz = tonumber(locx), tonumber(locy), tonumber(locz) end
+                end
             end
         end
-        work_camps[name] = camp .. " " .. loc
+        -- v1.8.10: distance to the first player + significance tier bucket
+        -- (tier thresholds from the native BaseCampSignificanceInfoList:
+        -- in-base 0.1s / 500m=50000cm 1.5s / 2500m 2.5s / 4500m 5s /
+        -- 6500m+ 10s; no player = all far). Units are cm.
+        local tier = "far10"
+        if locx and #player_locations > 0 then
+            local ploc = player_locations[1]
+            local px, py = ploc:match("X=(-?%d+%.?%d*),Y=(-?%d+%.?%d*)")
+            if px then
+                px, py = tonumber(px), tonumber(py)
+                local d = math.sqrt((locx - px) ^ 2 + (locy - py) ^ 2)
+                if d < 35000 then tier = "inbase01"
+                elseif d < 50000 then tier = "t500_15"
+                elseif d < 250000 then tier = "t2500_25"
+                elseif d < 450000 then tier = "t4500_5"
+                end
+            end
+        end
+        work_camps[name] = camp .. " " .. loc .. " tier=" .. tier
         -- v1.8.9: work location via CachedOwnerMapObjectConcreteModel:GetActor()
         -- -> K2_GetActorLocation() (PSO-proven member-read pattern); player
+        -- distance then gives the significance tier directly (in-base 0.1s /
+        -- 500m 1.5s / 2500m 2.5s / 4500m 5s / 6500m+ 10s).
         -- distance then gives the significance tier directly (in-base 0.1s /
         -- 500m 1.5s / 2500m 2.5s / 4500m 5s / 6500m+ 10s).
     elseif token == "BP_PlayerCharacter_C" or token == "PalPlayerCharacter" then
