@@ -271,7 +271,20 @@ local function scan_one(object, name)
         local camp = "?"
         local okc, campv = pcall(function() return object:GetId() end)
         if okc and campv ~= nil then camp = classify_struct(campv, "workid") end
-        work_camps[name] = camp
+        local loc = "?"
+        local okm, model = pcall(function() return object["CachedOwnerMapObjectConcreteModel"] end)
+        if okm and model ~= nil then
+            local oka, actor = pcall(function() return model:GetActor() end)
+            if oka and actor ~= nil then
+                local okl, pos = pcall(function() return actor:K2_GetActorLocation() end)
+                if okl and pos ~= nil then loc = classify_struct(pos, "loc") end
+            end
+        end
+        work_camps[name] = camp .. " " .. loc
+        -- v1.8.9: work location via CachedOwnerMapObjectConcreteModel:GetActor()
+        -- -> K2_GetActorLocation() (PSO-proven member-read pattern); player
+        -- distance then gives the significance tier directly (in-base 0.1s /
+        -- 500m 1.5s / 2500m 2.5s / 4500m 5s / 6500m+ 10s).
     elseif token == "BP_PlayerCharacter_C" or token == "PalPlayerCharacter" then
         local okp, loc = pcall(function() return object:K2_GetActorLocation() end)
         if okp and loc ~= nil then
