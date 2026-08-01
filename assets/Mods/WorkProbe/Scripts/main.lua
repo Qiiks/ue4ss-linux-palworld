@@ -180,6 +180,17 @@ local function class_token(name)
     return name:match("^(%S+)") or "?"
 end
 
+local function table_concat_kv(t, sep)
+    local parts = {}
+    if type(t) == "table" then
+        for k, v in pairs(t) do
+            parts[#parts + 1] = tostring(k) .. "=" .. tostring(v)
+        end
+        table.sort(parts)
+    end
+    return table.concat(parts, sep or " | ")
+end
+
 local function scan_one(object, name)
     local token = class_token(name)
     -- v1.8.4: match the CLASS TOKEN exactly (like the control census) —
@@ -467,7 +478,7 @@ local function probe_tick()
     -- v1.8: camp association + tier (one pass, defensive reads)
     local scan_ok = pcall(scan_camps_and_work)
     local camp_line = string.format("%d camps=%d sigs=%s locs=%s",
-        now, #camp_models, table.concat(camp_significance, " | "), table.concat(camp_locations, " | "))
+        now, #camp_models, table_concat_kv(camp_significance, " "), table_concat_kv(camp_locations, " "))
     append_line(camp_line)
     append_line(string.format("%d players=%s", now, table.concat(player_locations, " | ")))
     if #scan_errors > 0 then
