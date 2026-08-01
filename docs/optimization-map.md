@@ -157,3 +157,27 @@ Linux has `linux_crash_handler` (open/write/backtrace_symbols_fd) but it calls a
 - **Seccomp → live** at the 20:00 UTC daily maintenance window (test already unconfined; A/B measured ~5-8% CPU).
 - **WorkProbe catch-up data** — needs a player on the test server.
 - **Significance-tier pak tuning** — gated on WorkProbe catch-up semantics (Phase 4 decision).
+
+---
+
+## 10. Live promotion + WorkProbe camp instrumentation (2026-08-01 night, full autonomy)
+
+### Live fully promoted (22:13 UTC) — the entire fixed stack
+- New lib `6e4f9538` (walk-live-objects + T3 gates + T1 AOB + T2 crash handler + review fixes), PSO v1.2.1 (proximity-wake DISABLED — the v1.2 UAF fix), SM v1.7, WorkProbe v1.7 wired into mods.txt.
+- **Seccomp unconfined on live** via Coolify compose update (`security_opt: - seccomp=unconfined`) — survives Coolify container recreation. Old lib backed up as libUE4SS.so.pre-walkfix-7276cf93.
+- Verified: all 5 mods loaded clean, zero crash dumps, walk-fix proof — live control census sees **94,357 live objects** (was ~3,900 on the broken walk; live's fresh world is smaller than test's 274k populated world).
+- Note: PSO CPU re-measure on live was attempted but live is idle (0% CPU, empty world, no players) — perf captures there are meaningless; the populated test world is the measurement target.
+
+### WorkProbe v1.8 series — camp association (per-tier effective-rate measurement)
+Goal: bucket each UPalWorkProgress by its base camp + player distance → significance tier → measure effective work rate per tier (the kill-shot for the significance-tuning question).
+
+Fork Lua-binding discoveries (all verified empirically, 22:22-22:50 UTC):
+1. **Struct PROPERTY reads return opaque `TrivialObject` userdata** — `obj.BaseCampIdBelongTo`, `obj.Transform`, `obj.SignificanceInfo` are all unresolved on this fork (FGuid/FTransform/FPalBaseCampSignificanceInfo have no Lua pusher). Member access returns the same trivial object.
+2. **UFUNCTION struct returns DO resolve** — `object:GetId()` returns a struct whose A/B/C/D members read as int32 via `:get()` (PSO's proven remote-value pattern). `object:GetTransform()` returns a struct whose Translation/Rotation/Scale3D members are nested Lua tables.
+3. **Class-token matching is mandatory** — substring name matching catches path noise (the live work instances contain the manager's name in their path; 127 pseudo-camps were Blueprint/reflection noise). Match `name:match("^(%S+)")` exactly: `PalBaseCampModel`, `PalWorkProgress`, `PalWorkProgressMultiType`.
+4. **Per-object pcall isolation** — a single throw in the ForEachUObject callback aborts the whole walk silently; wrap scan_one per object and capture errors.
+5. **table.concat only handles arrays** — string-keyed tables (camp#1...) need a pairs-based serializer.
+
+Current v1.8.6 state on test: camps=6 with real FGuid ints (camp#1 A=0,B=0,C=0,D=0 = the default/empty GUID — likely a template; #2-#6 are the real 5 camps, matching PalBaseCampModel=5 in the census), work objects with workid FGuid ints, GetTransform nested tables resolving. WorkCollection (object ref) read attempt in flight — WorkIds (TArray<FGuid>) would give the work→camp link directly.
+
+Still open: nested table X/Y/Z extraction (Translation=table: 0x... needs one more level), WorkCollection array read, then the per-tier rate bucketing (needs a player in one base while others stay far).
