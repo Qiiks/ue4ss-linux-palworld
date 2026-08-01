@@ -144,7 +144,25 @@ local function classify_struct(value, label)
     -- try nested member access for structs (FGuid/FTransform/FPalBaseCampSignificanceInfo)
     -- NOTE: direct member reads return TrivialObject userdata; the proven
     -- pattern (PSO get_remote_value) is member:get() to resolve remote values.
+    -- v1.8.6: struct members that are themselves structs come back as Lua
+    -- TABLES (Translation=table:...) — recurse one level for X/Y/Z.
     if value == nil then return label .. "=nil" end
+    if type(value) == "table" then
+        local parts = {}
+        for _, member in ipairs({"X", "Y", "Z", "W"}) do
+            local ok, v = pcall(function() return value[member] end)
+            if ok and v ~= nil then
+                local resolved = v
+                local ok2, got = pcall(function() return v:get() end)
+                if ok2 and got ~= nil then resolved = got end
+                parts[#parts + 1] = member .. "=" .. tostr_safe(resolved)
+            end
+        end
+        if #parts > 0 then
+            return label .. "{" .. table.concat(parts, ",") .. "}"
+        end
+        return label .. "=<table>"
+    end
     local summary = {}
     for _, member in ipairs({"A", "B", "C", "D", "X", "Y", "Z", "W", "Translation", "Rotation", "Scale3D", "Tier", "Interval", "Type", "ID"}) do
         local ok, v = pcall(function() return value[member] end)
@@ -152,7 +170,7 @@ local function classify_struct(value, label)
             local resolved = v
             local ok2, got = pcall(function() return v:get() end)
             if ok2 and got ~= nil then resolved = got end
-            summary[#summary + 1] = member .. "=" .. tostr_safe(resolved)
+            summary[#summary + 1] = member .. "=" .. classify_struct(resolved, "")
         end
     end
     if #summary > 0 then
@@ -209,10 +227,20 @@ local function scan_one(object, name)
         local tf = "?"
         local oktf, tfv = pcall(function() return object:GetTransform() end)
         if oktf and tfv ~= nil then tf = classify_struct(tfv, "tf") end
+        -- v1.8.6: WorkCollection is an object REF (readable property, unlike
+        -- structs) → try its WorkIds (TArray<FGuid>) for the work→camp link.
+        local wc = "?"
+        local okwc, wcv = pcall(function() return object:GetWorkCollection() end)
+        if okwc and wcv ~= nil then
+            -- WorkIds is a TArray property (property style read; the array
+            -- pusher iterates it if the inner type has a registered handler)
+            local okwids, wids = pcall(function() return wcv["WorkIds"] end)
+            if okwids and wids ~= nil then wc = classify_struct(wids, "wc") end
+        end
         local entry = "camp#" .. tostring(#camp_models + 1)
         camp_models[#camp_models + 1] = entry
         camp_locations[entry] = tf
-        camp_significance[entry] = id
+        camp_significance[entry] = id .. " wc=" .. wc
     elseif token == "PalWorkProgress" or token == "PalWorkProgressMultiType" then
         -- work→camp: BaseCampIdBelongTo is a struct property (TrivialObject).
         -- Try the BlueprintPure GetId() for the work identity; the camp
