@@ -564,6 +564,17 @@ local function probe_tick()
         append_line("  " .. row)
     end
 
+    -- v1.8.11 LEAK DISCRIMINATOR: report THIS mod's own Lua heap (SM's
+    -- lua_kb only measures SM's state) and force a full GC. If RSS stops
+    -- climbing when GC runs, the leak is WorkProbe-side Lua retention
+    -- (interned census strings / tables); if RSS keeps climbing, it is a
+    -- native leak (fork FString path). collectgarbage on the game thread
+    -- is stop-the-world for this state only.
+    local gc_before = collectgarbage("count")
+    collectgarbage("collect")
+    local gc_after = collectgarbage("count")
+    append_line(string.format("%d gc_kb before=%d after=%d", now, gc_before, gc_after))
+
     -- v1.8: camp association + tier (one pass, defensive reads)
     local scan_ok = pcall(scan_camps_and_work)
     local camp_line = string.format("%d camps=%d sigs=%s locs=%s",
