@@ -286,14 +286,45 @@ namespace RC::Unreal
         FName::ToStringInternal(name, string);
 
         StringType name_string{*string ? *string : STR("UE4SS_None")};
+
+        // Leak fix (2026-08-02): the game's ToStringInternal allocates the
+        // FStringOut Data buffer via the GAME's allocator (FMallocBinned2). The
+        // fork's TArray destructor frees via FMemory::Free → SystemFree on Linux
+        // (glibc) — a mismatched free the game allocator never sees, leaking
+        // ~300B per call (~425MB/min when ForEachUObject walkers call GetFullName
+        // per object, WorkProbe-only bisect). Free with the game's allocator and
+        // detach the pointer so the fork destructor no-ops.
+        auto& data = string.GetCharArray();
+        if (data.Num() > 0)
+        {
+            FMemory::FreeExternal(data.GetData());
+            data.SetNum(0, EAllowShrinking::No);
+            data.SetDataPtr(nullptr);
+        }
+
         return name_string;
     }
 
     const StringType ToStringInternalWrapper_UsingConv_NameToString(const FName* name)
     {
-        const auto string = UKismetStringLibrary_Conv_NameToString(*name);
+        auto string = UKismetStringLibrary_Conv_NameToString(*name);
 
         StringType name_string{*string ? *string : STR("UE4SS_None")};
+
+        // Leak fix (2026-08-02): the game's Conv_NameToString (ProcessEvent)
+        // allocates the returned FString's Data buffer via the GAME's allocator;
+        // the fork's FString destructor frees via SystemFree on Linux — mismatched
+        // free, ~300B/call leak (root cause of the WorkProbe-only 425MB/min and
+        // the live 100MB/min incident). Free with the game's allocator and detach
+        // so the fork destructor no-ops.
+        auto& data = string.GetCharArray();
+        if (data.Num() > 0)
+        {
+            FMemory::FreeExternal(data.GetData());
+            data.SetNum(0, EAllowShrinking::No);
+            data.SetDataPtr(nullptr);
+        }
+
         return name_string;
     }
 
