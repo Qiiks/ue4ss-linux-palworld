@@ -18,6 +18,7 @@
 #include <DynamicOutput/Output.hpp>
 
 #include <Unreal/Core/Containers/FString.hpp>
+#include <Unreal/FMemory.hpp>
 #include <Unreal/Core/Containers/FUtf8String.hpp>
 #include <Unreal/Core/Containers/FAnsiString.hpp>
 #include <Unreal/BPMacros.hpp>
@@ -295,12 +296,12 @@ namespace RC::Unreal
         // per object, WorkProbe-only bisect). Free with the game's allocator and
         // detach the pointer so the fork destructor no-ops.
         auto& data = string.GetCharArray();
-        if (data.Num() > 0)
+        if (data.Num() > 0 && GMalloc && *GMalloc)
         {
             auto* buf = data.GetData();
             data.SetNum(0, EAllowShrinking::No);
             data.SetDataPtr(nullptr);
-            FMemory::FreeExternal(buf);
+            (*GMalloc)->Free(buf);
         }
 
         return name_string;
@@ -319,12 +320,12 @@ namespace RC::Unreal
         // the live 100MB/min incident). Free with the game's allocator and detach
         // so the fork destructor no-ops.
         auto& data = string.GetCharArray();
-        if (data.Num() > 0)
+        if (data.Num() > 0 && GMalloc && *GMalloc)
         {
             auto* buf = data.GetData();
             data.SetNum(0, EAllowShrinking::No);
             data.SetDataPtr(nullptr);
-            FMemory::FreeExternal(buf);
+            (*GMalloc)->Free(buf);
         }
 
         return name_string;
