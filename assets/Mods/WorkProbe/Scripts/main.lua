@@ -421,6 +421,17 @@ local function probe_tick()
         return
     end
 
+    -- v1.8.12 LEAK DISCRIMINATOR (safe form): report THIS mod's own Lua heap
+    -- at tick START and after the walks, WITHOUT collecting (full GC on a
+    -- state holding 274k UObject userdata SIGSEGVs this fork — v1.8.11 crash,
+    -- exit 139). SM's lua_kb only measures SM's state, so WorkProbe's heap is
+    -- invisible to the monitor; if gc_start climbs across ticks while RSS
+    -- climbs, the leak is Lua-side retention (interned census strings /
+    -- tables). If gc_start stays flat while RSS climbs, the leak is native
+    -- (fork GetFullName/FString path).
+    local gc_start = collectgarbage("count")
+    append_line(string.format("%d gc_start=%.1f", os.time(), gc_start))
+
     probe_runs = probe_runs + 1
     local now = os.time()
     local rows = {}
@@ -564,16 +575,9 @@ local function probe_tick()
         append_line("  " .. row)
     end
 
-    -- v1.8.11 LEAK DISCRIMINATOR: report THIS mod's own Lua heap (SM's
-    -- lua_kb only measures SM's state) and force a full GC. If RSS stops
-    -- climbing when GC runs, the leak is WorkProbe-side Lua retention
-    -- (interned census strings / tables); if RSS keeps climbing, it is a
-    -- native leak (fork FString path). collectgarbage on the game thread
-    -- is stop-the-world for this state only.
-    local gc_before = collectgarbage("count")
-    collectgarbage("collect")
+    -- v1.8.12: post-walk heap sample (no collect — full GC crashes this fork)
     local gc_after = collectgarbage("count")
-    append_line(string.format("%d gc_kb before=%d after=%d", now, gc_before, gc_after))
+    append_line(string.format("%d gc_after=%.1f", now, gc_after))
 
     -- v1.8: camp association + tier (one pass, defensive reads)
     local scan_ok = pcall(scan_camps_and_work)
