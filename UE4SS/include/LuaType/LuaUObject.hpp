@@ -438,6 +438,7 @@ namespace RC::LuaType
 
     auto add_to_global_unreal_objects_map(Unreal::UObject* object) -> void;
     auto is_object_in_global_unreal_object_map(Unreal::UObject* object) -> bool;
+    auto clear_global_unreal_objects_map() -> void;
 
     template <typename DerivedType, typename ObjectName>
     class UObjectBase : public RemoteObjectBase<DerivedType, ObjectName>

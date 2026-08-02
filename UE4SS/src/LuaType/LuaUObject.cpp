@@ -80,6 +80,24 @@ namespace RC::LuaType
         return object && s_lua_unreal_objects.contains(object->HashObject());
     }
 
+    // Leak fix (2026-08-01, walk-live-objects aftermath): the game-side delete
+    // listener (FLuaObjectDeleteListener via AddUObjectDeleteListener) never
+    // fires on this stripped Linux build — the FUObjectArray::UObjectDeleteListeners
+    // offset (0x78) is unverified and the listener is appended into a wrong
+    // TArray, so NotifyUObjectDeleted never runs and s_lua_unreal_objects grows
+    // unbounded (~32-42B per churned object; observed 98-118MB/min on a busy
+    // server). The walk now visits every live object every pass, so pruning the
+    // set at the START of each ForEachUObject pass makes it re-populate to
+    // exactly the live set — dead entries drop out, staleness bounded by the
+    // walk interval (60s), matching PSO's own TTL pattern. Consumers (IsValid,
+    // UScriptStruct) keep working. This is the robust server-side fix; the
+    // root-cause (correct 0x78 offset) cannot be re-verified per game update.
+    auto clear_global_unreal_objects_map() -> void
+    {
+        std::lock_guard lock{s_lua_unreal_objects_map_mutex};
+        s_lua_unreal_objects.clear();
+    }
+
     FLuaObjectDeleteListener FLuaObjectDeleteListener::s_lua_object_delete_listener{};
     void FLuaObjectDeleteListener::NotifyUObjectDeleted(const Unreal::UObjectBase* object, [[maybe_unused]] int32_t index)
     {

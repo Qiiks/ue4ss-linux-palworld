@@ -1572,6 +1572,12 @@ Overloads:
             {
                 constexpr int32_t elements_to_reserve = 40;
 
+                // Leak fix (2026-08-01): same pruning as ForEachUObject — the
+                // delete listener never fires on this stripped Linux build, so
+                // prune the liveness set before FindAllOf re-constructs the
+                // matched objects (bounded staleness: one call duration).
+                LuaType::clear_global_unreal_objects_map();
+
                 std::vector<Unreal::UObject*> found_unreal_objects;
 
                 // Reserving some space because FindAllOf is likely to find lots of objects
@@ -2447,6 +2453,12 @@ Overloads:
         });
 
         lua.register_function("ForEachUObject", [](const LuaMadeSimple::Lua& lua) -> int {
+            // Leak fix (2026-08-01): the delete listener never fires on this
+            // stripped Linux build (FUObjectArray listener offset unverified),
+            // so s_lua_unreal_objects grows unbounded with object churn.
+            // Prune at the start of each walk: the walk re-constructs every
+            // live object, so the set re-populates to exactly the live set.
+            LuaType::clear_global_unreal_objects_map();
             Unreal::UObjectGlobals::ForEachUObject([&](void* object, int32_t chunk_index, int32_t object_index) {
                 // Duplicate the Lua function so that we can use it in subsequent iterations of this loop (call_function pops the function from the stack)
                 lua_pushvalue(lua.get_lua_state(), 1);
