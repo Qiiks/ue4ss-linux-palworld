@@ -297,9 +297,10 @@ namespace RC::Unreal
         auto& data = string.GetCharArray();
         if (data.Num() > 0)
         {
-            FMemory::FreeExternal(data.GetData());
+            auto* buf = data.GetData();
             data.SetNum(0, EAllowShrinking::No);
             data.SetDataPtr(nullptr);
+            FMemory::FreeExternal(buf);
         }
 
         return name_string;
@@ -320,9 +321,10 @@ namespace RC::Unreal
         auto& data = string.GetCharArray();
         if (data.Num() > 0)
         {
-            FMemory::FreeExternal(data.GetData());
+            auto* buf = data.GetData();
             data.SetNum(0, EAllowShrinking::No);
             data.SetDataPtr(nullptr);
+            FMemory::FreeExternal(buf);
         }
 
         return name_string;
