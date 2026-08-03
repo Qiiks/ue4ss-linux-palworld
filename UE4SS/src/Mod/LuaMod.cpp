@@ -2485,6 +2485,17 @@ Overloads:
                 lua.throw_error("TrimAllocator failed: GMalloc is not resolved.");
                 return 0;
             }
+            // RE-verified (2026-08-03): Palworld's allocator has NO Trim virtual —
+            // vtable+0x50 is NULL (the +0x20 slot is an accessor, not Free; the
+            // real Free is TLS-inlined). Calling Trim here would call address 0.
+            // Guard the slot before dispatching.
+            auto* gmalloc_instance = *Unreal::GMalloc;
+            auto* vtable = *reinterpret_cast<void***>(gmalloc_instance);
+            if (!vtable || !vtable[Unreal::FMalloc::VTableLayoutMap[STR("Trim")] / 8])
+            {
+                lua.throw_error("TrimAllocator failed: allocator has no Trim virtual (Palworld TLS allocator).");
+                return 0;
+            }
             (*Unreal::GMalloc)->Trim(true);
             return 0;
         });
