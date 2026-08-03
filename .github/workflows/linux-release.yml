@@ -247,6 +247,7 @@ jobs:
           cp assets/UE4SS-settings.ini release/package/
           cp assets/palworld/MemberVariableLayout.ini release/package/
           cp -r assets/Mods release/package/
+          cp -r assets/palworld/UE4SS_Signatures release/package/
           cp release/BUILD_INFO.txt release/package/
 
           cat > release/package/INSTALL.txt <<'EOF'
@@ -255,7 +256,7 @@ jobs:
           1. Stop your server.
           2. Copy the ENTIRE contents of this folder next to PalServer.sh
              (keeps: libUE4SS.so, UE4SS-settings.ini, MemberVariableLayout.ini,
-              Mods/, BUILD_INFO.txt).
+              Mods/, UE4SS_Signatures/, BUILD_INFO.txt).
           3. Start your server with LD_PRELOAD pointing at libUE4SS.so, e.g.:
                LD_PRELOAD=./libUE4SS.so ./PalServer.sh -port=8211 [your flags]
           4. Lua mods: drop into Mods/<ModName>/ (with scripts/main.lua) and
