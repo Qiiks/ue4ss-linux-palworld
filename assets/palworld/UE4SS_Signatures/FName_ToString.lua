@@ -1,0 +1,13 @@
+-- Palworld Linux dedicated server (Steam buildid 24466863, v1.0.2.101103)
+-- Verified 2026-08-03 against the running process: FName::ToString(FString&) =
+-- 0x7945dd0 (Conv_NameToString UFunction Func member -> native impl -> ToString;
+-- append-into-existing-capacity semantics confirmed at 0x77950a0).
+--
+-- Why a hardcoded address: the binary strips the symbol from dynsym (dlsym
+-- fails) and the fork's built-in AOB is weak. The Lua scan override is the
+-- fork's documented mechanism for supplying verified addresses.
+--
+-- If the game updates and this address goes stale, the wrapper falls back to
+-- the Conv_NameToString path (functional but leaks ~300B/call) or the
+-- dlsym/AOB resolver — the server keeps running either way.
+return 0x7945dd0

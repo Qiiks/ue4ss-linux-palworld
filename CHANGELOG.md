@@ -1,5 +1,40 @@
 # UE4SS Linux Native Port - Changelog
 
+## v1.0.3-palworld-linux — Release fix set (2026-08-03)
+
+### Bug Fixes (all merged upstream as PRs #2-#13)
+- **FName::ToString FString leak (~300B/call)** — PR #12: game-allocated FString
+  buffers freed with glibc instead of the game's Binned2 allocator → RSS climbs
+  100-425MB/min under object-walking mods (host OOM in ~2.5h). Fixed by
+  pre-reserving the fork-owned FStringOut (game appends into existing capacity,
+  never allocates). Address via Lua scan override
+  (`UE4SS_Signatures/FName_ToString.lua`).
+- **ForEachUObject walk amputated the live world** — PR #10: 4-chunk 262k cap +
+  EInternalObjectFlags==0 skip removed (3.9k → 274k live objects visible).
+- **Sticky-atomic hook fast paths + adaptive async sleep** — PR #9.
+- **Allocation-free, fork()-writer Linux crash handler** — PR #8 (old handler
+  allocated inside itself → wedged game thread on heap-corruption crashes).
+- **AOB-scan fallback for UGameEngine::Tick** — PR #7 (dlsym fails on stripped
+  dynsym; 24B signature, exactly 1 hit).
+- **UEngine::Tick vtable slot 0x308** — PR #6 (baked 0x2F0 was PostExit — the
+  "AOB scan returns 0x0" silent dead hook; restores game-thread timers).
+- **Lifecycle-hook deadlock** — PR #5: 13 unconditional hooks + Lua mutex →
+  game thread wedged on any player join/leave.
+- **KismetSystemLibrary name** — PR #3 (UE5.1, was UE4's KismetStringLibrary).
+- **Walk address filters** — PR #4: 0x7e-0x7f range check rejected every object
+  on non-PIE binaries.
+- **SettingsManager never throws** — PR #2: SIGABRT via libsteam_api's broken
+  __gxx_personality_v0 on empty [EngineVersionOverride]; non-throwing parse.
+- **GUI console default off** — PR #13: DebuggingGUI::setup SIGSEGV on headless
+  servers (issue #1 Crash 1); shipped settings now
+  `ConsoleEnabled=0 / GuiConsoleEnabled=0 / GuiConsoleVisible=0`.
+
+### Improvements
+- Release package ships `UE4SS_Signatures/FName_ToString.lua` so the leak fix
+  is active out of the box.
+
+---
+
 ## v3.0.2 - Bug Fixes (2026-07-19)
 
 ### Bug Fixes

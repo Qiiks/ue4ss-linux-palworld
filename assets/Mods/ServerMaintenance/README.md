@@ -44,17 +44,30 @@ the EngineTick/game-thread dispatch is fixed, or when run in-game.
 
 ## Thread-safety rules (learned the hard way)
 
-- **`LoopAsync` is the only working periodic timer** on the fork build
-  (EngineTick AOB scan fails; `LoopInGameThreadWithDelay` never fires).
+- **`LoopAsync` is the async-thread timer** (works on all builds — 144/144
+  ticks proven). `LoopInGameThreadWithDelay`/`ExecuteInGameThreadWithDelay`
+  are the **game-thread** timers — dead until the fork's UEngine::Tick fix
+  (slot 0x308 + AOB fallback, PRs #6/#7), now working.
 - **NEVER call UE-facing APIs from the LoopAsync thread** — `GetObjectCount`
   (v1.3) and `TrimAllocator` (TrimProbe) both SIGSEGV the process (exit 139).
   Async snapshots use pure stdlib only (`/proc`, `os.time`,
   `collectgarbage("count")`).
-- **UE APIs only on the game thread** — via `RegisterInitGameStatePostHook`
-  (fires per world init) or console handlers.
+- **UE APIs on the game thread only** — via `LoopInGameThreadWithDelay` (works
+  post-EngineTick-fix), `RegisterInitGameStatePostHook` (per world init), or
+  console handlers.
+- **`Loop*WithDelay` = auto-looping — NEVER re-arm it inside the callback**
+  (doubles timers exponentially; the v1.1→v1.2 WorkProbe bug).
+  `Execute*WithDelay` = one-shot.
+- **`collectgarbage("collect")` on a state holding ~274k UObject userdata
+  SIGSEGVs** — use `collectgarbage("count")` without collecting.
 
 ## Changelog
 
+- v1.7 — config-gated automated game-thread TrimAllocator probe
+  (`auto_trim`, default OFF — the soak baseline must stay clean; rides the
+  now-working EngineTick path).
+- v1.6 — game-thread UObject census via `LoopInGameThreadWithDelay` (the
+  `objs=` field fills every snapshot post-EngineTick-fix).
+- v1.5 — config file support (config.lua, enable/disable per feature).
 - v1.4 — async-safe LoopAsync snapshots (pure stdlib); crash lesson from v1.3
   (GetObjectCount from async thread = SIGSEGV); game-thread census hook.
-- v1.5 — config file support (config.lua, enable/disable per feature).

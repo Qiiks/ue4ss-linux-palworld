@@ -21,8 +21,10 @@ Full hook table: [UE4SS-PALWORLD-LINUX-STATUS.md](UE4SS-PALWORLD-LINUX-STATUS.md
 Game updates are handled by three resilience layers — an update either just
 works or fails loudly, never silently corrupts the server:
 
-1. **AOB scans** resolve ProcessEvent, FName, GUObjectArray, GMalloc, etc.
-   across recompiles.
+1. **AOB scans / Lua signature overrides** resolve ProcessEvent, FName, GUObjectArray,
+   GMalloc, etc. across recompiles. (Palworld strips symbols from dynsym, so
+   `dlsym` fails for several — verified addresses ship as Lua scan overrides,
+   e.g. `UE4SS_Signatures/FName_ToString.lua`.)
 2. **Self-healing vtable sweep** re-derives AActor BeginPlay/EndPlay slot
    offsets by consensus over all vtables in the binary at boot.
 3. **Validation gate** disassembles every vtable hook target before detouring
@@ -85,11 +87,14 @@ disabled and `UE4SS.log` names it (`Palworld hook validation REFUSED ...`).
   Windows DLLs can never load here.
 - Palworld-specifics that differ from upstream:
   - `RegisterKeyBind` needs a real TTY (no stdin console on dedicated servers).
-  - GUI runs headless (EGL, hidden window) — no visible window on a server.
+  - The debug GUI console is **off by default** (`GuiConsoleEnabled=0` — its
+    GLFW setup SIGSEGVs on headless servers; enable only on a desktop).
   - Console-command mods rely on the `ProcessConsoleExec` hook (works, fires
     on RCON/chat commands).
   - One mod crashing does not kill the server — per-mod crash recovery logs
     and continues.
+  - **No FName::ToString leak**: pre-reserved FStringOut (PR #12) — the
+    game's buffer is never left to a mismatched free.
 
 ---
 

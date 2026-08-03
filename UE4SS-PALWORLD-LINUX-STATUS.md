@@ -1,6 +1,6 @@
 # UE4SS Native Linux Port — Palworld Server
 
-## Status: WORKING — all hooks verified in-game; update-resilient (2026-07-29)
+## Status: WORKING — all hooks verified in-game; update-resilient (2026-08-03)
 
 Lua mods load, `RegisterHook` works, admin commands work, players join and play
 with the full hook set enabled. Server stable at 118–119 FPS.
@@ -39,7 +39,7 @@ with the full hook set enabled. Server stable at 118–119 FPS.
 | InitGameState | `HookInitGameState=true` | `0xa3b5000` (slot `0x740`) | Working |
 | ProcessConsoleExec | `HookProcessConsoleExec=true` | `0x7b4b5e0` (slot `0x2B8`) | Working |
 | ULocalPlayerExec | `HookLocalPlayerExec=true` | via `FExecVTableOffsetInLocalPlayer` | Working |
-| EngineTick | `HookEngineTick=true` (default) | `0xaa39580` (slot `0x2F0`) | Working — 30h-stable |
+| EngineTick | `HookEngineTick=true` (default) | `0xaa3cfe0` (slot `0x308`; baked 0x2F0 was PostExit) | Working — PR #6 + #7 (AOB fallback) |
 | ProcessLocalScriptFunction | `HookProcessLocalScriptFunction=true` | AOB scan | Working — survived player join (fixed by thunk-aware JMP resolution) |
 | StaticConstructObject | always on | AOB scan | Working |
 | CallFunctionByNameWithArguments | `HookCallFunctionByNameWithArguments=true` | AOB scan | Working — survived player join (thunk fix) |
@@ -60,7 +60,7 @@ blanket-shift. Overrides live in `deps/first/Unreal/src/UnrealInitializer.cpp`
 | AActor::BeginPlay | 0x380 | **0x388** | 261 vtables share `0x9f778f0` at 0x388; caller `mov %rdi,%rbx; call` (1-arg) |
 | AActor::EndPlay | 0x388 | **0x390** | same sweep; wrapper callers pass `rsi` through (EndPlayReason) |
 | AGameModeBase::InitGameState | 0x738 | **0x740** | six GameMode vtables hold `0xa3b5000` at 0x740; override wrapper chains into it with rdi only |
-| UEngine::Tick | 0x2F0 | **0x2F0 (unshifted)** | 30h-stable hook; slot 0x2F8's fn is `(ptr, i64, ptr)` and crashes if detoured as Tick |
+| UEngine::Tick | 0x2F0 | **0x308** (baked 0x2F0 = PostExit, silent dead hook) | PR #6: gdb call-site dispatch + runtime stack sample + GameInstance fingerprint; PR #7: 24B AOB fallback (`55 41 57 41 56 41 55 41 54 53 48 83 EC 58 49 89 FC 48 8B BF E0 09 00 00`, exactly 1 hit) for the dlsym case (Palworld strips `UGameEngine::Tick` from dynsym) |
 | UEngine::LoadMap | 0x4C0 | **0x4C0 (baked)** | fires cleanly at startup; consistent across 3 UEngine vtables |
 
 Model: AActor's own region has an extra slot before the tick-prerequisite
@@ -69,6 +69,35 @@ adapters (0x378/0x380 = RemoveTickPrerequisiteActor/Component adapters, note
 ProcessEvent-and-later slots are +8. Do not generalize.
 
 ## Root Causes Found and Fixed (newest first)
+
+### 2026-08 fix set — PRs #2-#13 (all merged upstream)
+
+1. **FName::ToString FString leak (~300B/call)** — PR #12: the game allocates the
+   FString output via its TLS-cache allocator and the fork frees via glibc → allocator
+   mismatch, leak; fixed by pre-reserving the fork-owned FStringOut so the game never
+   allocates. Address via Lua scan override (`UE4SS_Signatures/FName_ToString.lua`,
+   `return 0x7945dd0`). GMalloc-based free is structurally impossible (no vtable Free).
+2. **GUI console default** — PR #13: shipped settings now default `GuiConsoleEnabled=0`
+   (DebuggingGUI::setup SIGSEGV on headless servers, issue #1 Crash 1).
+3. **ForEachUObject walk amputated the live world** — PR #10: 4-chunk 262k cap +
+   EInternalObjectFlags==0 skip removed (zero flags is the live-object steady state).
+4. **Sticky-atomic hook gates + adaptive async sleep** — PR #9 (engine_tick_hook self
+   0.04% after; fewer wakeups).
+5. **Allocation-free crash handler** — PR #8: old handler allocated inside itself and
+   deadlocked the game thread on heap-corruption crashes (the "signal 0 + empty dump"
+   saga); new handler = static buffers + snprintf + raw write + fork()-writer.
+6. **AOB fallback for UGameEngine::Tick** — PR #7 (dlsym fails on stripped dynsym).
+7. **UEngine::Tick slot 0x308** — PR #6 (baked 0x2F0 was PostExit — silent dead hook).
+8. **Lifecycle-hook deadlock** — PR #5: 13 unconditional hooks took the Lua mutex on
+   the game thread while the async thread held it through its 5ms sleep; any actor
+   spawn/despawn (join/leave) wedged the game thread. Empty-callback early returns +
+   sleep moved outside the lock + 13 sticky atomic flags.
+9. **KSL name** — PR #3: `KismetSystemLibrary` (UE5.1) not `KismetStringLibrary` (UE4).
+10. **Walk address filters** — PR #4: 0x7e-0x7f range check rejected every object on
+    non-PIE binaries (heap at 0x73-0x7c; compiler folds to range-length form).
+11. **SettingsManager never throws** — PR #2: `std::stoll` on empty
+    `[EngineVersionOverride]` aborted through libsteam_api's broken
+    `__gxx_personality_v0`; C-style non-throwing parsing.
 
 ### Lua error handling on a multi-runtime process
 
@@ -183,11 +212,11 @@ was 0 — wrong for e.g. `BountyProof_1`). New Lua overload
   capture the stalled game thread with `gdb -p <pid> -batch -ex "thread apply all bt 8"`.
 - **Stripped binary:** no symbols; every address in this doc is for the current
   `PalServer-Linux-Shipping` build and WILL move on update.
-- **Never exercised in production:** headless GUI (`GuiEnabled=false` locally;
-  EGL hidden-window path exists in the build but has never run on this
-  server), C++ `.so` mod loading via `dlopen` (implemented in CppMod.cpp,
+- **Never exercised in production:** C++ `.so` mod loading via `dlopen` (implemented in CppMod.cpp,
   but no C++ mod has been load-tested), `ProcessInternal` hook
   (unresolvable on stripped binaries — PLSF covers the mods that use it).
+  (Headless GUI is no longer a gap: the shipped default is `GuiConsoleEnabled=0`
+  — the GLFW setup SIGSEGVs headless, PR #13.)
 
 ## Key Addresses (runtime, process-specific)
 - GUObjectArray: `0xc11e878` (BSS, patternsleuth)

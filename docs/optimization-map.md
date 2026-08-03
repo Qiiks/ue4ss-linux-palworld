@@ -1,8 +1,8 @@
 # Palworld Server + UE4SS Fork — Master Optimization Map
 
 **Server:** v1.0.2.101103 (UE 5.1), obnyis/palworld-dedicated-server, Coolify on Oracle Cloud 149.118.136.203
-**Fork:** Qiiks/ue4ss-linux-palworld (upstream BlackBookOfficial), deployable = linux-native @ b23ad7c (lib md5 7276cf93)
-**Date:** 2026-08-01 · **Constraint:** feature-preserving only (never trade features for performance)
+**Fork:** Qiiks/ue4ss-linux-palworld (upstream BlackBookOfficial), deployable = linux-native @ 8c427ed (leak fix + review fixes + GUI default; test lib caa1a4f7, live lib a00f8356)
+**Date:** 2026-08-03 · **Constraint:** feature-preserving only (never trade features for performance)
 
 Evidence key: 🔬 measured (perf/gdb/soak A/B) · 🧪 community (multi-source, consistent) · 💭 design (dump/mechanism-derived, unmeasured)
 
@@ -57,19 +57,19 @@ Full analysis: `docs/palworld-worker-ai-analysis.md` (addenda A-F). Summary:
 | 2.3 | BaseCampWorkerEventTriggerInterval 90→180s | pak (PalGameSetting CDO) | sanity/event evaluations halved; events rarer | 🔬 CDO value 90.0 verified | 📐 mild, feature-safe |
 | 2.4 | MinAIActionComponentTickInterval 0.05→0.2 | pak | **MOOT — components never tick-enabled** | 🔬 live | 🚫 DEAD |
 | 2.5 | WorkerMaxNum via DT_BaseCampLevelData | pak | fewer workers/base | — | 🚫 VETOED (feature cut) |
-| 2.6 | Work-catch-up runtime test (WorkProbe mod) | game-thread probe of UPalWorkProgress | none (measurement only) | 💭→🔬 | 🔧 QUEUED (unlocks 2.1) |
+| 2.6 | Work-catch-up runtime test (WorkProbe mod) | game-thread probe of UPalWorkProgress | none (measurement only) | 💭→🔬 | ✅ ANSWERED — see §12 |
 
 ## 3. Mod layer (UE4SS Lua)
 
 | # | Mod | State | Notes | Status |
 |---|---|---|---|---|
 | 3.1 | AlphaRespawnScheduler | ✅ live+test | 10-min boss cooldown (was 1h); LoopAsync-based (works) | ✅ |
-| 3.2 | PalServerOptimizer v1.0 | ✅ live+test | ragdoll off, mesh-tick, dropped-item budget; **loops verified firing every 60s post-EngineTick-fix** (was inert); mesh_classify_unready=11001 backlog = classification cost | ✅ + 🔧 v1.2 queued |
-| 3.3 | ServerMaintenance v1.6 | ✅ live+test | LoopAsync snapshots (RSS/lua/objs 5-min), config.lua system, versioned | ✅ |
+| 3.2 | PalServerOptimizer v1.2.1 | ✅ live+test | ragdoll off, mesh-tick, dropped-item budget; classification memoization (60s TTL LRU — cache hits 116 vs 4 misses live), real-clock drop deltas, ragdoll re-assert; proximity-wake DISABLED (v1.2 UAF crash) | ✅ |
+| 3.3 | ServerMaintenance v1.7 | ✅ live+test | LoopAsync snapshots (RSS/lua/objs 5-min), config.lua system, game-thread census (EngineTick), auto_trim probe (default OFF) | ✅ |
 | 3.4 | UE4SSStatus | ✅ live+test | print-only, zero risk | ✅ |
-| 3.5 | **PSO v1.2** | 📐 | memoize classification per monster via GetAddress (reflection walk N× per spawn), real-clock deltas (os.clock), ragdoll re-assert, dormancy proximity-wake, dropped-item settle fixes | 🔧 QUEUED (after soak) |
-| 3.6 | **SM v1.7** | 📐 | game-thread TrimAllocator policy (EngineTick now works!), census on game-thread hook, allocator-stats exposure for the pooled-size Trim tell | 🔧 QUEUED (after soak) |
-| 3.7 | **WorkProbe** | 📐 | measures work-progress catch-up (2.6) — the community-first result | 🔧 QUEUED |
+| 3.5 | **PSO v1.2.1** | ✅ shipped | memoize per monster (GetAddress), os.clock deltas, ragdoll re-assert; proximity-wake reverted (UAF on freed actor — strong IsValid can't run in sweep) | ✅ (UAF fixed) |
+| 3.6 | **SM v1.7** | ✅ shipped | game-thread TrimAllocator probe (config-gated, default OFF — soak baseline must stay clean) | ✅ |
+| 3.7 | **WorkProbe v1.8.x** | ✅ shipped | catch-up measurement DONE (§12); per-tier distance bucketing; 5 findings on fork Lua bindings (§10) | ✅ |
 
 ## 4. Fork layer (UE4SS C++)
 
@@ -77,11 +77,11 @@ Deployable = b23ad7c: walk fixes (address filter / split / KSL name), deadlock f
 
 | # | Item | State | Notes | Status |
 |---|---|---|---|---|
-| 4.1 | Upstream PRs #2-#6 | ✅ filed | settings-never-throw, ksl-name, walk-fix, lifecycle-hook-deadlock, engine-tick-slot | ✅ |
-| 4.2 | GameEngine::Tick AOB scan | 🔍 | scan returns 0x0; vtable fallback + slot override works; a working signature would let upstream drop the slot hack | 🔍 rev-2 |
-| 4.3 | Linux crash dumper | 🔍 | CrashDumper.cpp uses Windows API (CreateFileW) — empty minidumps, possible report-write hang | 🔍 rev-2 |
-| 4.4 | ForEachUObject cost | 🔬 0.5-1.1% | census + PSO classification walk the object array; GetObjectCount O(1) already in API | 📐 |
-| 4.5 | Hook dispatch per-tick cost | 🔍 | engine_tick_hook / process_event_hook allocations | 🔍 rev-2 |
+| 4.1 | Upstream PRs #2-#13 | ✅ ALL MERGED 2026-08-02/03 | settings-never-throw, ksl-name, walk-fix, lifecycle-hook-deadlock, engine-tick-slot-0x308, AOB-fallback, crash-dumper, tick-path-gates, walk-live-objects, leak-fix (#12), GUI-default (#13) | ✅ |
+| 4.2 | GameEngine::Tick AOB fallback | ✅ PR #7 merged | 24B signature @ 0xaa3cfe0, exactly 1 hit; dlsym fails on stripped dynsym | ✅ |
+| 4.3 | Linux crash dumper | ✅ PR #8 merged | allocation-free + fork()-writer; old handler allocated inside → wedged game thread (the "signal 0 + empty dump" saga) | ✅ |
+| 4.4 | ForEachUObject cost | 🔬 0.5-1.1% | census + PSO classification walk the object array; walk fixed (PR #10: 45k→348k slots, 3.9k→274k live objects); 1.61% GetFlagsInternal spike = PSO classification pass (memoized in v1.2.1) | 📐 |
+| 4.5 | Hook dispatch per-tick cost | ✅ PR #9 merged | sticky-atomic fast paths + adaptive async sleep; engine_tick_hook self 0.04% | ✅ |
 
 ## 5. Host/infra layer (NEW findings)
 
@@ -207,13 +207,63 @@ then the fork's ~TArray (Array.hpp:1054) NEVER frees (view wrapper). Silent neve
 - v2 (acee14b): added bVersionedContainerIsInitialized guard → still crashed: the required-
   objects walk runs AFTER the flag is set, so the guard passes and the free fires during init.
 
-### Fix v3 (in progress)
-RE the real GMalloc via gdb (non-PIE binary → link-time vaddrs == runtime). Game's FMemory::Free
-inlined stub loads FMalloc** global → Free at vtable+0x20. Then Palworld-gate a verified GMalloc
-override (Tick 0x308 pattern) and re-apply detach+free in NameTypes.cpp.
+### Fix v3 — SHIPPED & VALIDATED (2026-08-03) — pre-reserve, not free
 
-### Deployment state
-LIVE: rolled back to 7276cf93 stack (PSO v1.1 + SM v1.6 + ARS + UE4SSStatus), flat 1.12GB, safe.
-TEST: reverted lib 561a20ef; recovered from steamcmd flake (pak/md5 mismatch + 0-byte stubs
-restored from live); ALWAYS_UPDATE_ON_START=false. Leak proven on test under WorkProbe census
-(2.42GB → 8.99GB in ~13 min); test stopped to protect host from OOM until v3 builds.
+GMalloc RE (rev-1, live gdb) proved a GMalloc-based free is STRUCTURALLY IMPOSSIBLE:
+real allocator @ 0xC0248A8 has NO vtable Free — slot +0x20 is an accessor, +0x38/+0x50
+NULL; Free is TLS-inlined; no out-of-line FMemory::Free stub exists. The fork's
+heuristic pick 0xBD453C8 was a false-positive stub allocator (the v1/v2 crash cause).
+
+**The shipped fix** (7a3ac60 + 67654d7 + review fixes 42918cd; PR #12):
+1. Pre-reserve the fork-owned FStringOut (`string.Reset(NAME_SIZE+16)`) BEFORE calling
+the game's FName::ToString(FString&) @ 0x7945dd0 — RE-verified the game APPENDS into
+existing capacity (`cmp needed, Max(+0xC); jge keep-buffer` at 0x77950a0), so it never
+calls its allocator; the fork dtor SystemFrees its own buffer. Correct ownership.
+2. The address ships via Lua scan override (UE4SS_Signatures/FName_ToString.lua,
+`return 0x7945dd0`) — NOT UE4SS_Addresses.ini (Ini::Parser throws on missing keys →
+SIGABRT through libsteam_api's broken __gxx_personality_v0; the Lua path never throws).
+### Deployment state (2026-08-03)
+LIVE: a00f8356 stack (leak fix + all mods: ARS, PSO v1.2.1, SM v1.7, WorkProbe,
+UE4SSStatus), flat 1.22GB, joinable (149.118.136.203:8211 / GoonWatch101).
+TEST: caa1a4f7 (review-fixed build), full 5-mod set on the populated 683-pal world,
+flat 2.1-2.3GB, zero dumps. ALWAYS_UPDATE_ON_START=false on both (steamcmd
+destroy-loop lesson: staged full game into steamapps/downloading, timeout aborted
+mid-finalize → wiped binary+pak; restored from known-good volume, pak hardlinked
+b252c78b). Both servers seccomp=unconfined (5.1). Daily 20:00 UTC restart live.
+
+---
+
+## 12. Work-catch-up ANSWERED — keep native significance tiers (2026-08-02)
+
+### The experiment
+Player joined the populated test world and stood in a base while WorkProbe sampled
+UPalWorkProgress every 60s: tick (ProgressTimeSinceLastTick), rate
+(AutoWorkSelfAmountBySec), remain (GetRemainWorkAmount), plus per-tier distance
+bucketing (v1.8.x). 32 live work instances observed with real rates 2-120/s.
+
+### The answer: work progresses in throttled batch cycles
+obj=30 (declared rate 120/s): remain cycled 6396 → 4044 → 6304 → 533 → 2764 →
+5018 → 7249 → 1478 across 8 samples — a -5770 consumption burst every ~3 samples
+with +2230 re-assignment additions between: a production cycle completing in
+DISCRETE batch consumption, not smooth drain. Declared rate ≠ effective rate
+(120/s × 66s = 7,920 expected vs ~5,770 per ~200s ≈ 29-44/s effective) — the
+significance gate demonstrably throttles work below theoretical rate.
+rate=0 objects stay frozen (worker-driven work with no self-progress at far tiers,
+consistent with the frozen-pawn live-binary proof).
+
+### Decision: NO nerf-tier pak (2.1 retired)
+Significance-tier tuning COSTS output (the gate throttles) but work still completes
+— the native tiers already ARE the feature-preserving compromise. Tuning far tiers
+further would trade player-visible production for CPU with zero feature preservation
+gain. 2.1/6.1/6.2 CLOSED. The catch-up measurement (community-first) is documented
+in the skill KB + memory #1166/#1169.
+
+### Enabling prerequisite: the ForEachUObject walk fix (PR #10)
+The earlier "no live work objects / all frozen" finding was a walk-coverage artifact:
+UObjectGlobals.cpp chunked walk had (1) a 4-chunk SafeElementLimit hard cap (262,144
+of 403,389 objects — the streamed world lives in chunks 4-6, never visited) and
+(2) an EInternalObjectFlags==0 skip (zero is the steady state for live objects;
+only root-set engine assets survived). Removed both: slots_visited 45k → 348k,
+all_live_total 3.9k → 274k. PR #10. Side effect that mattered: PSO finally saw the
+real world (ragdoll_components 11 → 129) — and the census workload exposed the
+ToString leak (§11), which is why the leak fix had to land.
