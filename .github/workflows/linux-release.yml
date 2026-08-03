@@ -38,7 +38,6 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          submodules: recursive
           fetch-depth: 0
           fetch-tags: true
 
@@ -60,6 +59,11 @@ jobs:
             libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
             libgl-dev libegl-dev libgles-dev \
             gcc g++ binutils zip xz-utils
+      - name: Init submodules
+        # actions/checkout@v4 can't use submodules: recursive here — git is
+        # missing in the Debian container at checkout time and the REST
+        # fallback doesn't support submodules. Init after apt installs git.
+        run: git submodule update --init --recursive
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
