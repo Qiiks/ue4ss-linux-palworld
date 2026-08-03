@@ -220,7 +220,7 @@ jobs:
           Branch: $(git branch --show-current)
           Build Type: Game__Dev__Linux64
           Compiler: $(g++ --version | head -1)
-          Build Host: debian-12 (bookworm, x86_64)
+          Build Host: ubuntu-24.04 (GitHub-hosted runner, x86_64)
           GUI: Enabled (GLFW3/OpenGL3)
           Input: Disabled
           Profilers: Disabled
