@@ -35,15 +35,6 @@ jobs:
     container:
       image: debian:12
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-
-      - name: Resolve tag name
-        run: echo "TAG_NAME=${{ inputs.tag_name != '' && inputs.tag_name || github.ref_name }}" >> $GITHUB_ENV
-
       - name: Install dependencies
         # Debian 12 package names. The release artifact targets
         # glibc 2.36 and GLIBCXX 3.4.30 (GCC 12) so it runs on
@@ -52,25 +43,31 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-            cmake ninja-build pkg-config git ca-certificates curl \
+            git ca-certificates curl \
+            cmake ninja-build pkg-config \
             libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
             libgl-dev libegl-dev libgles-dev \
             gcc g++ binutils zip xz-utils
-      - name: Init submodules
-        # actions/checkout@v4 can't use submodules: recursive here — git is
-        # missing in the Debian container at checkout time and the REST
-        # fallback doesn't support submodules. Init after apt installs git.
-        run: git submodule update --init --recursive
 
-      - name: Fetch all tags
-        run: git fetch --tags --force origin
+      - name: Checkout repo
+        # No actions/checkout: the Debian container image has no git, so
+        # checkout falls back to the REST API download which doesn't support
+        # submodules and produces no .git dir. Clone manually after installing
+        # git (uses the default branch; the release workflow targets linux-native).
+        run: |
+          git clone --recursive https://github.com/${{ github.repository }}.git .
+          git fetch --tags --force origin
+          git checkout linux-native 2>/dev/null || true
+          git pull --ff-only origin linux-native 2>/dev/null || true
+
+      - name: Resolve tag name
+        run: echo "TAG_NAME=${{ inputs.tag_name != '' && inputs.tag_name || github.ref_name }}" >> $GITHUB_ENV
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
           components: rustfmt
-
       - name: Configure CMake (Linux Development)
         run: |
           export CC=gcc
