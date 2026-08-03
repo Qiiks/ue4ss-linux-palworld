@@ -25,51 +25,36 @@ concurrency:
 jobs:
   build-and-release:
     name: Build and Publish Linux Release
-    # Build inside Debian 12 (bookworm) so the released .so targets
-    # glibc 2.36 and GLIBCXX_3.4.30. Building on Ubuntu 24.04 produces
-    # a .so that requires glibc 2.39, which won't run on Debian 12
-    # inference providers or older distros. The runner is still
-    # ubuntu-24.04 (GitHub-hosted); the container directive runs all
-    # steps inside the Debian 12 image.
     runs-on: ubuntu-24.04
-    container:
-      image: debian:12
     steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Fetch all tags
+        run: git fetch --tags --force origin
+
+      - name: Resolve tag name
+        run: echo "TAG_NAME=${{ inputs.tag_name != '' && inputs.tag_name || github.ref_name }}" >> $GITHUB_ENV
+
       - name: Install dependencies
-        # Debian 12 package names. The release artifact targets
-        # glibc 2.36 and GLIBCXX 3.4.30 (GCC 12) so it runs on
-        # the widest range of host systems, including inference
-        # providers limited to those versions.
         run: |
-          apt-get update
-          apt-get install -y --no-install-recommends \
-            git ca-certificates curl \
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
             cmake ninja-build pkg-config \
             libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
             libgl-dev libegl-dev libgles-dev \
             gcc g++ binutils zip xz-utils
-
-      - name: Checkout repo
-        # No actions/checkout: the Debian container image has no git, so
-        # checkout falls back to the REST API download which doesn't support
-        # submodules and produces no .git dir. Clone manually after installing
-        # git (uses the default branch; the release workflow targets linux-native).
-        run: |
-          git config --global --add safe.directory /__w/${{ github.repository }}
-          git config --global --add safe.directory "$(pwd)"
-          git clone --recursive https://github.com/${{ github.repository }}.git .
-          git fetch --tags --force origin
-          git checkout linux-native 2>/dev/null || true
-          git pull --ff-only origin linux-native 2>/dev/null || true
-
-      - name: Resolve tag name
-        run: echo "TAG_NAME=${{ inputs.tag_name != '' && inputs.tag_name || github.ref_name }}" >> $GITHUB_ENV
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
           components: rustfmt
+
       - name: Configure CMake (Linux Development)
         run: |
           export CC=gcc
