@@ -189,3 +189,31 @@ Still open: nested table X/Y/Z extraction (Translation=table: 0x... needs one mo
 
 ### PSO CPU re-measure (populated world, walk-fixed + seccomp unconfined, 23:20 UTC)
 perf on the real game process (PalServer-Linux, NOT the PalServerUE4SS wrapper — that one is 0% and produces 0.015MB garbage captures): 6478 samples. Game main-loop region 0x755f* ≈ 10.5%; kernel syscall storm ≈ 14.1% (pthread_sigmask _copy_to_user 5.16% + entry_SYSCALL 2.84% + do_syscall 1.82% + sigprocmask 1.08% — **seccomp gone, no __seccomp_filter symbols**); **fork (RC::Unreal) ≈ 4.3%**: FindAllOf lambda 2.04% + GetNamePrivate 1.00% + GetSuperStruct 0.74% + GetClassPrivate 0.54% (the 60s PSO/WorkProbe/SM census walks at 274k objects — the measured price of the walk fix); pthread_mutex_lock 1.60%; blake3 1.28% (save pipeline); _start 1.93%. Seccomp A/B validated on live: 0% seccomp cost vs 7.92% pre-fix.
+
+## 11. Memory leak saga — ToString paths leak game-allocated buffers (2026-08-02→03)
+
+### The leak
+RSS climbs ~100-425MB/min native once ForEachUObject walkers call GetFullName/GetName per object
+(objs flat, lua flat). ~300B/call. WorkProbe-only bisect: 425MB/min; PSO-only: flat.
+
+### Root cause (proven)
+Fork ToString paths (NameTypes.cpp) — Conv path ACTIVE (FName::ToString not found in stripped
+binary; Conv_NameToString resolves) — let the GAME allocate the FString Data buffer (Binned2),
+then the fork's ~TArray (Array.hpp:1054) NEVER frees (view wrapper). Silent never-free leak.
+
+### Failed fixes
+- v1 (e7bbb1cf): (*GMalloc)->Free after detach → SIGSEGV at init. GMalloc = BSS heuristic
+  (Palworld doesn't export it; nm -D empty); fork's own comment warns of false positives.
+- v2 (acee14b): added bVersionedContainerIsInitialized guard → still crashed: the required-
+  objects walk runs AFTER the flag is set, so the guard passes and the free fires during init.
+
+### Fix v3 (in progress)
+RE the real GMalloc via gdb (non-PIE binary → link-time vaddrs == runtime). Game's FMemory::Free
+inlined stub loads FMalloc** global → Free at vtable+0x20. Then Palworld-gate a verified GMalloc
+override (Tick 0x308 pattern) and re-apply detach+free in NameTypes.cpp.
+
+### Deployment state
+LIVE: rolled back to 7276cf93 stack (PSO v1.1 + SM v1.6 + ARS + UE4SSStatus), flat 1.12GB, safe.
+TEST: reverted lib 561a20ef; recovered from steamcmd flake (pak/md5 mismatch + 0-byte stubs
+restored from live); ALWAYS_UPDATE_ON_START=false. Leak proven on test under WorkProbe census
+(2.42GB → 8.99GB in ~13 min); test stopped to protect host from OOM until v3 builds.
