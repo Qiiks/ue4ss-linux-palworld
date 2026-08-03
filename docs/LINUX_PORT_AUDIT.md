@@ -185,6 +185,113 @@ Each change is classified as one of:
 
 ---
 
+## 18. FName::ToString FString Leak Fix (pre-reserve) — PR #12 (2026-08-03)
+
+**Files:** `deps/first/Unreal/src/NameTypes.cpp`, `UE4SS/src/UE4SSProgram.cpp`
+
+**Classification:** [GENERIC]
+
+**Rationale:** The Scan ToString path let the game allocate the FString output via its
+TLS-cache allocator, then the fork's dtor freed it with glibc — an allocator mismatch
+that leaks ~300B/call (425MB/min under object-walking mods). Fix: pre-reserve the
+fork-owned FStringOut (`Reset(NAME_SIZE+16)`) so the game appends into existing
+capacity and never allocates; the fork dtor frees its own buffer. Also guards the
+Linux dlsym/AOB fname_to_string override from clobbering a Lua scan override.
+
+---
+
+## 19. GameEngine::Tick — AOB fallback + slot 0x308 — PRs #6/#7 (2026-08-01)
+
+**File:** `UE4SS/src/UE4SSProgram.cpp`, `deps/first/Unreal/src/UnrealInitializer.cpp`
+
+**Classification:** [PALWORLD]
+
+**Rationale:** Palworld strips `UGameEngine::Tick` from dynsym (dlsym fails) and the
+baked vtable slot 0x2F0 points at `UEngine::PostExit` (a silent dead hook). Correct
+slot is 0x308 (RE-verified: call-site dispatch at FEngineLoop::Tick, runtime stack
+sample, GameInstance fingerprint). The 24-byte AOB (`55 41 57 41 56 41 55 41 54 53
+48 83 EC 58 49 89 FC 48 8B BF E0 09 00 00`, exactly 1 hit) is the update-resilient
+fallback for the stripped-symbol case. Restores game-thread timers.
+
+---
+
+## 20. Lifecycle-hook deadlock — PR #5 (2026-08-01)
+
+**File:** `UE4SS/src/Mod/LuaMod.cpp`, `LuaMod.hpp`
+
+**Classification:** [GENERIC]
+
+**Rationale:** 13 unconditional lifecycle hooks took the Lua mutex on the game thread
+while the async thread held it through a 5ms sleep → permanent deadlock on any actor
+spawn/despawn (player join/leave). Fix: empty-callback early returns before the lock
++ sleep moved outside the lock + 13 sticky atomic flags (release-on-emplace,
+acquire-on-check; monotonic, never cleared).
+
+---
+
+## 21. Allocation-free Linux crash handler — PR #8 (2026-08-01)
+
+**File:** `UE4SS/src/CrashDumper.cpp`
+
+**Classification:** [GENERIC]
+
+**Rationale:** linux_crash_handler allocated/locked inside itself (fmt::format,
+std::string, get_now_as_string) → heap-corruption crashes deadlocked the game thread
+inside the handler (the "signal 0 + empty minidump" wedge saga). New handler: static
+buffers + snprintf + raw write, O_CLOEXEC, time(), fork()-writer child, offline
+addr2line symbolization.
+
+---
+
+## 22. Sticky-atomic tick-path gates + adaptive async sleep — PR #9 (2026-08-01)
+
+**File:** `UE4SS/src/Mod/LuaMod.cpp`, `LuaMod.hpp`
+
+**Classification:** [GENERIC]
+
+**Rationale:** engine_tick_hook/process_event_hook took 3+ recursive-mutex lock cycles
+per tick. Sticky-atomic fast paths gate before the first lock; update_async sleep is
+now adaptive (50ms idle / just-before-due when actions are queued).
+
+---
+
+## 23. ForEachUObject walk — remove 4-chunk cap + flags filter — PR #10 (2026-08-01)
+
+**File:** `deps/first/Unreal/src/UObjectGlobals.cpp`
+
+**Classification:** [GENERIC]
+
+**Rationale:** The chunked walk hard-capped at 4 chunks (262,144 of 403,389 objects)
+and skipped items whose EInternalObjectFlags word was 0 — but zero is the steady
+state for live objects, so only root-set engine assets survived (3.9k of 274k).
+Both removed; the per-iteration recovery wrapper is the real safety mechanism.
+
+---
+
+## 24. SettingsManager never throws — PR #2 (2026-08-01)
+
+**File:** `UE4SS/src/SettingsManager.cpp`
+
+**Classification:** [GENERIC]
+
+**Rationale:** `std::stoll("")` on an empty [EngineVersionOverride] threw through
+libsteam_api's broken `__gxx_personality_v0` → abort (SIGABRT, no log file).
+C-style non-throwing parsing with base-10 default (base-16 only for explicit 0x).
+
+---
+
+## 25. Shipped settings: GUI console default off — PR #13 (2026-08-03)
+
+**File:** `assets/UE4SS-settings.ini`
+
+**Classification:** [PALWORLD]
+
+**Rationale:** DebuggingGUI::setup SIGSEGVs on headless dedicated servers
+(issue #1 Crash 1). Shipped template defaults ConsoleEnabled=0/GuiConsoleEnabled=0/
+GuiConsoleVisible=0.
+
+---
+
 ## Summary
 
 | # | Change | Classification |
@@ -206,7 +313,15 @@ Each change is classified as one of:
 | 15 | Default__Object lookups | [GENERIC] |
 | 16 | Signal handler | [GENERIC] |
 | 17 | Thread stack size | [GENERIC] |
+| 18 | FName::ToString pre-reserve (PR #12) | [GENERIC] |
+| 19 | GameEngine::Tick slot 0x308 + AOB (PRs #6/#7) | [PALWORLD] |
+| 20 | Lifecycle-hook deadlock (PR #5) | [GENERIC] |
+| 21 | Allocation-free crash handler (PR #8) | [GENERIC] |
+| 22 | Tick-path gates + adaptive sleep (PR #9) | [GENERIC] |
+| 23 | Walk: remove 4-chunk cap + flags filter (PR #10) | [GENERIC] |
+| 24 | SettingsManager never throws (PR #2) | [GENERIC] |
+| 25 | GUI console default off (PR #13) | [PALWORLD] |
 
-**Palworld-specific:** 2 changes (#2, #11), both properly gated.
-**Generic upstream fixes:** 15 changes, benefiting all Linux UE4SS builds.
+**Palworld-specific:** 4 changes (#2, #11, #19, #25), all properly gated.
+**Generic upstream fixes:** 21 changes, benefiting all Linux UE4SS builds.
 **Temporary debug code:** 0 remaining (all removed in cleanup commit).
