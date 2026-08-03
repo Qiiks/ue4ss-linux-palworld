@@ -285,14 +285,12 @@ jobs:
             
             ${{ steps.changelog.outputs.CHANGELOG }}
             
-            ---
-            
             ### Build Configuration
             - Build Type: Game__Dev__Linux64
             - GUI: Enabled (GLFW3/OpenGL3)
             - Input: Disabled
             - Profilers: Disabled
-            - Compiler: GCC 12 (Debian 12 bookworm)
+            - Compiler: GCC 13 (Ubuntu 24.04 runner)
 
             ### Artifacts
             - `ue4ss-linux-palworld-<tag>.tar.gz` — Standard Unix archive, full drop-in: library, settings, Mods folder, config
@@ -306,13 +304,11 @@ jobs:
             ```
 
             ### Compatibility
-            - Built on Debian 12 (bookworm), x86_64
-            - Minimum runtime: glibc 2.36, GLIBCXX 3.4.30 (GCC 12)
-            - Runs on: Debian 12+, Ubuntu 22.04+ (with backports), and any distro with glibc ≥ 2.36
+            - Built on Ubuntu 24.04 (GitHub-hosted runner), x86_64
             - Requires: libGL, libEGL, libX11, libXrandr, libXinerama, libXcursor, libXi
-            - Engine Tick Hook: Auto-detected via dlsym (or manual override in UE4SS_Addresses.ini)
+            - Engine Tick Hook: Auto-detected via dlsym (or Lua scan override in UE4SS_Signatures)
           files: |
             ue4ss-linux-palworld-${{ env.TAG_NAME }}.tar.gz
-            ue4ss-linux-palworld-${{ env.TAG_NAME }}.zip
+            release/ue4ss-linux-palworld-${{ env.TAG_NAME }}.zip
             release/libUE4SS.so
             release/BUILD_INFO.txt
