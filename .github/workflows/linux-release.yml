@@ -55,6 +55,8 @@ jobs:
         # submodules and produces no .git dir. Clone manually after installing
         # git (uses the default branch; the release workflow targets linux-native).
         run: |
+          git config --global --add safe.directory /__w/${{ github.repository }}
+          git config --global --add safe.directory "$(pwd)"
           git clone --recursive https://github.com/${{ github.repository }}.git .
           git fetch --tags --force origin
           git checkout linux-native 2>/dev/null || true
