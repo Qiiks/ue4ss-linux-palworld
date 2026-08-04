@@ -150,3 +150,26 @@ applied. ServerMaintenance's "working" config was a coincidence (config values
 silently done nothing. Fix (fac6b73): after dofile, merge _G.CFG into the local
 CFG (missing keys keep defaults). VERIFIED: WorkProbe now loads interval_sec=300
 from config.lua and schedules at 300s. PSO unaffected (hardcoded constants).
+
+## DURABILITY FIX (v1.0.4 image) — Engine.ini tick survives restarts
+
+The measured tick-60 config kept reverting: test runs SERVER_SETTINGS_MODE=manual,
+so config.sh never touches Engine.ini; the game strips the IpNetDriver section in
+its shutdown write-back; every plain restart silently reverted to tick 120
+(observed: deployed tick 60 → 0 matches after restart). Live survives only
+because auto-mode config.sh re-applies the section every boot.
+
+FIX (committed 4705dd4): fork-overlay.sh now enforces
+`[/Script/OnlineSubsystemUtils.IpNetDriver]` + `NetServerMaxTickRate=60`
+idempotently on every boot — same protection live gets from config.sh.
+Also synced the image payload: docker/ue4ss/Mods now ships the config-fixed
+WorkProbe/ServerMaintenance main.lua (the image previously carried the
+pre-fix versions, so a fresh volume would restore the inert-config bug).
+WorkProbe config.example.lua updated to the CFG = {...} table format.
+
+Image rebuilt as server-v1.0.4 (aba9275fe5fb) + server-latest, test recreated
+on it, VERIFIED: strip-section → restart → overlay re-adds
+("adding IpNetDriver section" + "enforcing NetServerMaxTickRate=60" in logs),
+tick 60 active, all 5 mods, WorkProbe interval_sec=300 honored.
+ghcr push deferred — the VPS lost its docker login (root config emptied);
+needs a write:packages PAT.
