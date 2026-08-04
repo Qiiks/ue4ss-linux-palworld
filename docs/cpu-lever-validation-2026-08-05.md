@@ -105,3 +105,11 @@ Safe sequence: docker stop → docker cp full ini (chown steam:steam) → docker
 start. Manual sed edits of an intact file survive restarts (only dirty when
 corrupted/missing sections). Never append via nested heredocs through
 docker exec/ssh quoting layers — build the full file on the host with docker cp.
+
+## ARM 3 — fixed-frame-rate block on top of tick 60: NO GAIN (measured)
+
+30 samples, same world/mod stack: mean 40.83% vs arm-2's 42.19% (-1.36 pts),
+base avg 36.6% vs 35.5% (+0.4 pts) — statistically noise. The tick cap already
+frame-limits the server loop; bUseFixedFrameRate adds nothing measurable.
+VERDICT: revert the block (test returns to tick-60-only == live config). No
+inconsistency risk remains since the frame limiter follows the tick cap.
