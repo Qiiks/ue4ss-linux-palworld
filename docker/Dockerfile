@@ -29,7 +29,8 @@ CMD ["/scripts/fork-overlay.sh"]
 COPY scripts/fork-postinstall.sh /scripts/fork-postinstall.sh
 RUN chmod +x /scripts/fork-postinstall.sh
 ENV CUSTOM_SCRIPT_ENABLED=true \
-    CUSTOM_SCRIPT_PATH=/scripts/fork-postinstall.sh
+    CUSTOM_SCRIPT_PATH=/scripts/fork-postinstall.sh \
+    ALWAYS_UPDATE_ON_START=false \
     UPDATE_ON_BOOT=false \
     ENABLE_UE4SS=true
 
