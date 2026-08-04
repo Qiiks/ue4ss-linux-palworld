@@ -33,28 +33,11 @@ cp -f "${FORK_ROOT}/libUE4SS.so" "${UE4SS_DEST}/libUE4SS.so"
 [ -f "${FORK_ROOT}/UE4SS-settings.ini" ] && cp -f "${FORK_ROOT}/UE4SS-settings.ini" "${UE4SS_DEST}/UE4SS-settings.ini"
 [ -f "${FORK_ROOT}/mods.txt" ] && cp -f "${FORK_ROOT}/mods.txt" "${UE4SS_DEST}/mods.txt"
 
-# Signatures (leak-fix activation) and mods — overwrite, keep user configs if present
+# Signatures (leak-fix activation)
 [ -f "${FORK_ROOT}/UE4SS_Signatures/FName_ToString.lua" ] && cp -f "${FORK_ROOT}/UE4SS_Signatures/FName_ToString.lua" "${UE4SS_DEST}/UE4SS_Signatures/FName_ToString.lua"
-if [ -d "${FORK_ROOT}/Mods" ]; then
-    # copy mod dirs, preserving existing config.lua/log files on the volume
-    for moddir in "${FORK_ROOT}"/Mods/*/; do
-        [ -d "$moddir" ] || continue
-        modname="$(basename "$moddir")"
-        mkdir -p "${UE4SS_DEST}/Mods/${modname}"
-        for f in "${moddir}"*; do
-            [ -e "$f" ] || continue
-            fname="$(basename "$f")"
-            if [ -d "$f" ]; then
-                cp -rf "$f" "${UE4SS_DEST}/Mods/${modname}/"
-            elif [ "${fname}" = "config.lua" ] && [ -f "${UE4SS_DEST}/Mods/${modname}/config.lua" ]; then
-                ew "> fork-overlay: keeping existing config.lua for ${modname}"
-                continue
-            else
-                cp -f "$f" "${UE4SS_DEST}/Mods/${modname}/"
-            fi
-        done
-    done
-fi
+
+# Mods are (re)installed by fork-postinstall.sh via the custom-script hook AFTER
+# fresh_install/update (steamcmd wipes Mods/ on install) — nothing to do here.
 
 # The LD_PRELOAD launcher — the servermanager checks ./PalServerUE4SS.sh to decide
 # whether UE4SS is installed. We ship the launcher ourselves so the existence
