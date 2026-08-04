@@ -72,9 +72,19 @@ local function load_config()
         local path = dir .. "/config.lua"
         local ok, err = pcall(dofile, path)
         if ok then
-            if type(CFG) ~= "table" then
-                print(TAG .. " WARNING: config.lua replaced CFG with a non-table; ignoring")
+            -- dofile executes in the GLOBAL environment, so config.lua's
+            -- `CFG = {...}` writes _G.CFG — never the module-local CFG the
+            -- rest of this file reads. Merge the loaded table into the local
+            -- one (missing keys keep the defaults below). Without this, the
+            -- config file was inert: "config loaded" printed but values
+            -- never applied (found 2026-08-05 via WorkProbe interval_sec).
+            local loaded = _G.CFG
+            if type(loaded) ~= "table" then
+                print(TAG .. " WARNING: config.lua did not set a CFG table; ignoring")
                 return false
+            end
+            for k, v in pairs(loaded) do
+                CFG[k] = v
             end
             print(TAG .. " config loaded from " .. path)
             return true

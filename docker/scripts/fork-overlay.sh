@@ -39,6 +39,26 @@ cp -f "${FORK_ROOT}/libUE4SS.so" "${UE4SS_DEST}/libUE4SS.so"
 # Mods are (re)installed by fork-postinstall.sh via the custom-script hook AFTER
 # fresh_install/update (steamcmd wipes Mods/ on install) — nothing to do here.
 
+# Engine.ini tick enforcement — manual-mode servers get NOTHING from config.sh,
+# and the game strips the IpNetDriver section in its shutdown write-back (the
+# section survives on live only because auto-mode re-applies it every boot).
+# Re-apply idempotently on every boot so tick 60 never silently reverts to 120.
+ENGINE_INI="${GAME_ROOT}/Pal/Saved/Config/LinuxServer/Engine.ini"
+if [ -f "${ENGINE_INI}" ]; then
+    if ! grep -q "OnlineSubsystemUtils.IpNetDriver" "${ENGINE_INI}"; then
+        ei "> fork-overlay: adding IpNetDriver section to Engine.ini"
+        printf '\n[/Script/OnlineSubsystemUtils.IpNetDriver]\n' >> "${ENGINE_INI}"
+    fi
+    if ! grep -q "NetServerMaxTickRate=60" "${ENGINE_INI}"; then
+        ei "> fork-overlay: enforcing NetServerMaxTickRate=60"
+        if grep -q "NetServerMaxTickRate=" "${ENGINE_INI}"; then
+            sed -i "s/NetServerMaxTickRate=.*/NetServerMaxTickRate=60/" "${ENGINE_INI}"
+        else
+            printf 'NetServerMaxTickRate=60\n' >> "${ENGINE_INI}"
+        fi
+    fi
+fi
+
 # The LD_PRELOAD launcher — the servermanager checks ./PalServerUE4SS.sh to decide
 # whether UE4SS is installed. We ship the launcher ourselves so the existence
 # check passes and Yangff is never downloaded.
