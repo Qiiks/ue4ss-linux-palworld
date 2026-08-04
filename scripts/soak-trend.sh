@@ -11,6 +11,10 @@
 #   cpu        - docker-level CPU (host sampler)
 # Slopes: delta between consecutive hourly samples; the soak restarts break
 # the series (boot resets), so each line carries the boot uptime.
+#
+# v1.1 FIX: SM v1.7 snapshot lines no longer carry a "snapshot:" prefix —
+# they start with the epoch directly ("1785836387 rss_kb=..."), so the
+# snapshot extraction greps for the epoch+rss_kb pattern instead.
 
 TVOL=/var/lib/docker/volumes/palworld-test-data/_data
 LVOL=/var/lib/docker/volumes/wyxxyjqraays3f2dihlc7gb4_palworld-data/_data
@@ -21,7 +25,7 @@ snap() {
   # $1 = volume root. Latest SM snapshot line with objs= and rss_kb= and lua_kb=
   # (fields appear in order rss_kb, swap_kb, lua_kb, objs — extract each separately)
   local VOL="$1"
-  local LINE=$(sudo grep -a "snapshot:" "$VOL/Pal/Binaries/Linux/ue4ss/Mods/ServerMaintenance/mem-snapshots.log" 2>/dev/null | tail -1)
+  local LINE=$(sudo grep -aE "[0-9]{10} rss_kb=" "$VOL/Pal/Binaries/Linux/ue4ss/Mods/ServerMaintenance/mem-snapshots.log" 2>/dev/null | tail -1)
   local R=$(echo "$LINE" | grep -oE 'rss_kb=[0-9]+' | head -1)
   local L=$(echo "$LINE" | grep -oE 'lua_kb=[0-9]+' | head -1)
   local O=$(echo "$LINE" | grep -oE 'objs=[0-9]+' | head -1)
@@ -39,16 +43,11 @@ host_cpu() {
 
 TEST_SNAP=$(snap "$TVOL")
 LIVE_SNAP=$(snap "$LVOL")
-TEST_RSS=$(host_rss palworld-test)
-LIVE_RSS=$(host_rss palworld-wyxxyjqraays3f2dihlc7gb4)
-TEST_CPU=$(host_cpu palworld-test)
-LIVE_CPU=$(host_cpu palworld-wyxxyjqraays3f2dihlc7gb4)
 
-{
-  echo "$TS test[$TEST_RSS $TEST_CPU] snap[$TEST_SNAP] live[$LIVE_RSS $LIVE_CPU] snap[$LIVE_SNAP]"
-  # uptime of both game processes
-  for C in palworld-test palworld-wyxxyjqraays3f2dihlc7gb4; do
-    PID=$(sudo docker top "$C" -eo pid,comm 2>/dev/null | grep 'PalServer-Linux' | awk '{print $1}' | head -1)
-    [ -n "$PID" ] && echo "$TS $C uptime=$(ps -o etime= -p $PID 2>/dev/null | tr -d ' ')"
-  done
-} >> "$OUT" 2>&1
+echo "$TS test[rss_kb=$(host_rss palworld-test) cpu=$(host_cpu palworld-test)] snap[$TEST_SNAP] live[rss_kb=$(host_rss palworld-wyxxyjqraays3f2dihlc7gb4) cpu=$(host_cpu palworld-wyxxyjqraays3f2dihlc7gb4)] snap[$LIVE_SNAP]" | sudo tee -a "$OUT" > /dev/null
+
+# uptime of the game process per container (boot-reset marker for slope math)
+for C in palworld-test palworld-wyxxyjqraays3f2dihlc7gb4; do
+  UP=$(sudo docker inspect -f '{{.State.StartedAt}}' "$C" 2>/dev/null)
+  echo "$TS $C uptime=$UP" | sudo tee -a "$OUT" > /dev/null
+done
