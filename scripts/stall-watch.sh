@@ -8,6 +8,11 @@
 # Design: detection-only + recovery staging. It does NOT auto-restart:
 # a restart on a stalled boot writes a corrupt shutdown save; recovery must
 # be a deliberate human/agent action using the staged snapshot.
+#
+# v1.1 (2026-08-04): root-cause evidence — the 08-03/04 world-drop was a
+# disk-full event: journald "No space left on device" at 13:30, corrupt
+# autosave at 14:43, world unload (camps 6->1, live 274k->19k), 19h zombie.
+# Added disk-pressure check: >=90% used = world-drop risk warning.
 
 STALE_MIN=15
 RECOVERY=/home/ubuntu/stall-recovery
@@ -45,3 +50,10 @@ done
 
 check_container palworld-test /var/lib/docker/volumes/palworld-test-data/_data
 check_container palworld-wyxxyjqraays3f2dihlc7gb4 /var/lib/docker/volumes/wyxxyjqraays3f2dihlc7gb4_palworld-data/_data
+
+# disk-pressure check: journald reports "No space left on device" before world-drop
+# (2026-08-03 13:30 journal evidence + 14:43 corrupt autosave -> world unload)
+DISK_USED=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
+if [ "$DISK_USED" -ge 90 ]; then
+  log "DISK name=host used=${DISK_USED}% (>=90%) - world-drop risk, free space now"
+fi
