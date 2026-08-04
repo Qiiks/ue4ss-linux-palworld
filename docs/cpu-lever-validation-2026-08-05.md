@@ -93,3 +93,15 @@ change the measured outcome). Live already runs 60 — this confirms production
 config and aligns test. Feature impact: none observed in simulation (same work
 output; worker-AI significance-gated per earlier proof); player-present
 validation still pending per oracle gate.
+
+## Deployment trap discovered during arm 3 (2026-08-05)
+
+Engine.ini on these containers is WRITE-BACK protected: UE5.1 marks the config
+hierarchy dirty when the file is corrupt/unparseable, and the NEXT restart's
+shutdown write-back regenerates the game's 69-line default, clobbering any
+clean copy deployed in between (observed: nested-heredoc append corrupted the
+file → game regenerated → docker cp'd fixed-frame block vanished on restart).
+Safe sequence: docker stop → docker cp full ini (chown steam:steam) → docker
+start. Manual sed edits of an intact file survive restarts (only dirty when
+corrupted/missing sections). Never append via nested heredocs through
+docker exec/ssh quoting layers — build the full file on the host with docker cp.
