@@ -73,3 +73,23 @@ Launch args verified present on test: -useperfthreads -NoAsyncLoadingThread
 Live already runs tick 60 (original Coolify compose set it) — the user has
 played on it at 60 without complaint, which is the strongest feature-neutrality
 evidence available for the tick lever.
+
+## ARM 1 vs ARM 2 — MEASURED (2026-08-05, populated 683-pal world, same 5-mod stack)
+
+cpu-interval.sh (per-30s /proc/<pid>/stat deltas, game-thread process):
+
+| Metric | Arm 1 (tick 120) | Arm 2 (tick 60) | Delta |
+|---|---|---|---|
+| samples | 13 | 26 | — |
+| mean | 55.23% | 42.19% | -13.0 pts |
+| median | 53% | 40% | -13 pts |
+| base avg (non-spike) | 49.9% | 35.5% | -14.4 pts |
+| spike avg (60s census) | 61.5% | 50.0% | -11.5 pts |
+
+Verdict: NetServerMaxTickRate 120→60 saves ~13% CPU on the populated world —
+larger than the conservative estimate (the frame-limiter sleep path and main-loop
+dispatch both drop with the tick cap; the sigmask attribution retraction does not
+change the measured outcome). Live already runs 60 — this confirms production
+config and aligns test. Feature impact: none observed in simulation (same work
+output; worker-AI significance-gated per earlier proof); player-present
+validation still pending per oracle gate.
