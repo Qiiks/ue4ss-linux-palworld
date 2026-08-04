@@ -113,3 +113,28 @@ base avg 36.6% vs 35.5% (+0.4 pts) — statistically noise. The tick cap already
 frame-limits the server loop; bUseFixedFrameRate adds nothing measurable.
 VERDICT: revert the block (test returns to tick-60-only == live config). No
 inconsistency risk remains since the frame limiter follows the tick cap.
+
+## ARM 4 — AutoSaveSpan 30→300 on top of tick 60 (TEST-ONLY): -1.8 pts
+
+30 samples, same world/mod stack: mean 40.37% vs arm-2's 42.19% (-1.82 pts),
+base avg 33.7% vs 35.5% (-1.8 pts) — small but consistent with the T4 profile
+(~1.2% save pipeline: blake3 on IOThreadPool + PalSave pools). The blake3
+checksum runs 10x less often; save micro-spikes disappear.
+
+DURABILITY TRADE (not promoted, user's call): AutoSaveSpan=300 means a crash
+loses up to 5 min of world progress vs 30s at the default. stall-watch.sh
+bounds the damage (stages recovery assets within 15 min of a stall), and
+bIsUseBackupSaveData=true keeps hourly snapshots. Test-only until the user
+accepts the trade.
+
+## FINAL A/B TABLE (all arms: populated 683-pal world, identical 5-mod stack)
+
+| Arm | Config | n | mean | median | base avg | vs arm 1 |
+|---|---|---|---|---|---|---|
+| 1 | tick 120, autosave 30 | 13 | 55.23% | 53% | 49.9% | — |
+| 2 | tick 60, autosave 30 | 26 | 42.19% | 40% | 35.5% | -13.0 pts |
+| 3 | tick 60 + fixed-frame | 30 | 40.83% | 39% | 36.6% | no gain vs 2 |
+| 4 | tick 60, autosave 300 | 30 | 40.37% | 39% | 33.7% | -1.8 pts vs 2 (test-only) |
+
+LIVE ALREADY RUNS ARM 2 (tick 60, autosave 30) — verified on the live volume.
+The A/B validates production's existing choice; test now matches it.
