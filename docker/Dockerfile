@@ -17,6 +17,9 @@ FROM obnyis/palworld-dedicated-server:libx11-gdb
 # The game root (/palworld) is normally a volume, so we can't bake files there —
 # instead we bake a payload under /opt/ue4ss-fork and a wrapper CMD that overlays
 # it into the volume on every boot, BEFORE servermanager.sh decides whether to
+# download stock UE4SS (it skips the download when ./PalServerUE4SS.sh exists).
+COPY ue4ss/ /opt/ue4ss-fork/
+
 # Wrapper CMD: overlay fixed UE4SS stack, then hand off to the stock servermanager.
 # Entrypoint (PUID/PGID setup) runs first; CMD runs as the steam user.
 COPY scripts/fork-overlay.sh /scripts/fork-overlay.sh
