@@ -268,7 +268,7 @@ all_live_total 3.9k → 274k. PR #10. Side effect that mattered: PSO finally saw
 real world (ragdoll_components 11 → 129) — and the census workload exposed the
  ToString leak (§11), which is why the leak fix had to land.
 
-## 12. World-drop / silent-stall incident (2026-08-03/04) — DISK FULL
+## 13. World-drop / silent-stall incident (2026-08-03/04) — DISK FULL
 
 Operational incident, fully root-caused via WorkProbe census timeline + journald:
 test's disk-full caused the world to UNLOAD SILENTLY while the process kept
@@ -285,3 +285,27 @@ Detection: census live-object crash + Level.sav mtime freeze; precursor = disk
 assets BEFORE any restart (a stalled boot's shutdown save corrupts), down
 detection, disk-pressure warning. Recovery: restore from backup/world/<latest>,
 chown opc:opc, restart. Memory #1330/#1299; skill KB 'World-drop' section.
+
+## 14. Phase-4 CLOSED — the ToString leak was the entire RSS story (2026-08-04)
+
+With the leak-fix (v3, pre-reserve + Lua override) deployed on both servers, the
+10h+ soak verdict is decisive:
+
+- **Test (populated world, 5-mod set, 10.5h):** RSS oscillates in a 2.23–2.35GB
+  band — NO monotonic climb (+22MB over 10h ≈ noise). objs perfectly flat at
+  361,040; lua_kb stable 98–156. Pre-fix rate was 425MB/min.
+- **Live (fresh world, 4-mod set, 10h):** 1.107 → 1.111GB — dead flat. objs
+  159,940 → 160,025.
+
+**Conclusion: no Trim, no GC, no allocator-pool intervention needed.** The
+pre-leak-fix 'objs flat + RSS climbs' signature was the ToString leak itself
+(small at 3.9k-object walk coverage, catastrophic once the walk fix widened it)
+— NOT allocator fragmentation. SM v1.7 `auto_trim` stays OFF permanently; the
+fork's TrimAllocator guard (27a3c25) throws a clean error on Palworld's TLS
+allocator (vtable+0x50 is NULL — no Trim virtual exists), so there is nothing
+Trim could reclaim even if enabled. 6.3/6.4/6.5 CLOSED.
+
+Post-Phase-4 state: test recreated with seccomp=unconfined restored (the
+steamcmd-recovery recreate had dropped it; live kept it) — both servers now run
+the full validated stack: lib 83c3fcf9, seccomp unconfined, stall-watch + disk
+cleanup crons, leak-fixed soak at band-flat RSS.
