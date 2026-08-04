@@ -15,11 +15,12 @@ UE4SS_DEST="${GAME_ROOT}/Pal/Binaries/Linux/ue4ss"
 if [ ! -d "${FORK_ROOT}/Mods" ]; then
     exit 0
 fi
-
-ei ">>> fork-postinstall: (re)installing mod set"
-mkdir -p "${UE4SS_DEST}/Mods"
-
-# mods.txt enablement file (root of ue4ss dir, next to the .so)
+# mods.txt enablement file — the fork reads Mods/mods.txt (UE4SSProgram.cpp
+# auto-creates it with UE4SSStatus only if missing); production also carries a
+# copy at the ue4ss root. Write BOTH so a fresh volume never gets the
+# auto-created single-mod default.
+[ -f "${FORK_ROOT}/mods.txt" ] && cp -f "${FORK_ROOT}/mods.txt" "${UE4SS_DEST}/mods.txt"
+[ -f "${FORK_ROOT}/mods.txt" ] && cp -f "${FORK_ROOT}/mods.txt" "${UE4SS_DEST}/Mods/mods.txt"
 [ -f "${FORK_ROOT}/mods.txt" ] && cp -f "${FORK_ROOT}/mods.txt" "${UE4SS_DEST}/mods.txt"
 
 for moddir in "${FORK_ROOT}"/Mods/*/; do
