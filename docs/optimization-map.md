@@ -266,4 +266,22 @@ of 403,389 objects — the streamed world lives in chunks 4-6, never visited) an
 only root-set engine assets survived). Removed both: slots_visited 45k → 348k,
 all_live_total 3.9k → 274k. PR #10. Side effect that mattered: PSO finally saw the
 real world (ragdoll_components 11 → 129) — and the census workload exposed the
-ToString leak (§11), which is why the leak fix had to land.
+ ToString leak (§11), which is why the leak fix had to land.
+
+## 12. World-drop / silent-stall incident (2026-08-03/04) — DISK FULL
+
+Operational incident, fully root-caused via WorkProbe census timeline + journald:
+test's disk-full caused the world to UNLOAD SILENTLY while the process kept
+running a healthy-looking zombie (game thread ticking, mods probing, RSS flat
+~985MB) with autosave frozen. The restart then hit 'Save data is corrupted' +
+SIGSEGV + 0-byte Level.sav. Timeline (UTC): 13:30 journald 'No space left on
+device' → 13:22 world drop (camps 6→1, live 274k→19k; recovered 13:42) → 14:43:18
+corrupt autosave → 14:43:39 world unloads permanently → 19h zombie → 09:29
+restart → corrupt-save crash → 09:33 restore from backup/world/14.43.18 snapshot
+(no data loss, playerless window).
+
+Detection: census live-object crash + Level.sav mtime freeze; precursor = disk
+≥90%. Mitigation: scripts/stall-watch.sh v1.1 (cron */5) — stages recovery
+assets BEFORE any restart (a stalled boot's shutdown save corrupts), down
+detection, disk-pressure warning. Recovery: restore from backup/world/<latest>,
+chown opc:opc, restart. Memory #1330/#1299; skill KB 'World-drop' section.
