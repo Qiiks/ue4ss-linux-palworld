@@ -138,3 +138,15 @@ accepts the trade.
 
 LIVE ALREADY RUNS ARM 2 (tick 60, autosave 30) — verified on the live volume.
 The A/B validates production's existing choice; test now matches it.
+
+## BONUS FIND — config.lua was INERT in ServerMaintenance + WorkProbe
+
+The loaders did `pcall(dofile, path)` then read the module-local CFG table.
+dofile executes config.lua in the GLOBAL environment (`_G.CFG = {...}`), so the
+values never reached the local table — "config loaded" printed but nothing
+applied. ServerMaintenance's "working" config was a coincidence (config values
+== defaults); WorkProbe's interval_sec was always 60 regardless of config.lua
+(observed 60→60 across formats). The planned SM auto_trim A/B flip would have
+silently done nothing. Fix (fac6b73): after dofile, merge _G.CFG into the local
+CFG (missing keys keep defaults). VERIFIED: WorkProbe now loads interval_sec=300
+from config.lua and schedules at 300s. PSO unaffected (hardcoded constants).
