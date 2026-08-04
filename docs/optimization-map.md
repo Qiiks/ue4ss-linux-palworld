@@ -1,8 +1,9 @@
 # Palworld Server + UE4SS Fork — Master Optimization Map
 
 **Server:** v1.0.2.101103 (UE 5.1), obnyis/palworld-dedicated-server, Coolify on Oracle Cloud 149.118.136.203
-**Fork:** Qiiks/ue4ss-linux-palworld (upstream BlackBookOfficial), deployable = linux-native @ 8c427ed (leak fix + review fixes + GUI default; test lib caa1a4f7, live lib a00f8356)
-**Date:** 2026-08-03 · **Constraint:** feature-preserving only (never trade features for performance)
+**Fork:** Qiiks/ue4ss-linux-palworld (upstream BlackBookOfficial), deployable = linux-native @ 71700d5 (leak fix v3 + review fixes + GUI default; deployed lib 83c3fcf9 on BOTH live and test — md5-verified)
+**Date:** 2026-08-04 · **Constraint:** feature-preserving only (never trade features for performance)
+**Phase-4 status:** CLOSED — ToString leak was the entire RSS story; no Trim/GC needed (§14)
 
 Evidence key: 🔬 measured (perf/gdb/soak A/B) · 🧪 community (multi-source, consistent) · 💭 design (dump/mechanism-derived, unmeasured)
 
@@ -309,3 +310,32 @@ Post-Phase-4 state: test recreated with seccomp=unconfined restored (the
 steamcmd-recovery recreate had dropped it; live kept it) — both servers now run
 the full validated stack: lib 83c3fcf9, seccomp unconfined, stall-watch + disk
 cleanup crons, leak-fixed soak at band-flat RSS.
+
+## 15. Server CPU levers — MEASURED A/B (2026-08-05, populated 683-pal world)
+
+Full detail: docs/cpu-lever-validation-2026-08-05.md. Four arms, same 5-mod
+stack, cpu-interval.sh (per-30s /proc/<pid>/stat on the game process):
+
+| Arm | Config | mean | base avg | verdict |
+|---|---|---|---|---|
+| 1 | tick 120, autosave 30 | 55.23% | 49.9% | baseline |
+| 2 | tick 60, autosave 30 | 42.19% | 35.5% | **-13 pts, feature-neutral** |
+| 3 | + bUseFixedFrameRate=60 | 40.83% | 36.6% | no gain (noise) — reverted |
+| 4 | tick 60, autosave 300 | 40.37% | 33.7% | -1.8 pts but durability trade (test-only) |
+
+- **tick 60 is the win** — larger than the conservative estimate (frame-limiter
+  + main-loop dispatch both drop). Live already runs it; test now matches.
+- **fixed-frame: no measurable effect** — the tick cap already frame-limits.
+- **autosave 300: small win, real trade** (5-min crash-loss window vs 30s).
+  NOT promoted — user's call; stall-watch bounds the damage if accepted.
+- **RE corrections**: the ~16% 'spin' is bounded task-graph worker spinning
+  (no knob exists); the sigmask storm is SDL SIGPIPE-protected I/O, not tick
+  logic (earlier attribution retracted).
+- **Bug found + fixed en route**: config.lua was INERT in ServerMaintenance
+  + WorkProbe (dofile writes _G.CFG, local CFG shadowed) — the planned
+  auto_trim A/B would have silently done nothing. Fix fac6b73, verified.
+- **Post-A/B micro-lever**: WorkProbe interval 60→300 on test (config-gated,
+  catch-up experiment answered) — 5x fewer census walks.
+- 60s census spikes (48-51% vs 35% base) were WorkProbe's walk; now 300s.
+- Remaining open: player-present validation of tick 60 (per oracle gate),
+  auto_trim A/B now actually possible (config fix), autosave-300 decision.
