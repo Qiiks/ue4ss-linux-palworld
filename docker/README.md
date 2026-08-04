@@ -5,7 +5,7 @@ fixed fork stack: reviewed `libUE4SS.so`, the `FName_ToString.lua` address
 override (leak fix), and the ops mods (AlphaRespawnScheduler, PalServerOptimizer,
 ServerMaintenance, WorkProbe, UE4SSStatus).
 
-Prebuilt images: `ghcr.io/qiiks/ue4ss-linux-palworld:server-v1.0.3`
+Prebuilt images: `ghcr.io/qiiks/ue4ss-linux-palworld:server-v1.0.4`
 (also tagged `server-latest`).
 
 ## What's inside
@@ -14,7 +14,11 @@ Prebuilt images: `ghcr.io/qiiks/ue4ss-linux-palworld:server-v1.0.3`
   config templating, webhooks — all stock behavior preserved)
 - Reviewed fork lib at `Pal/Binaries/Linux/ue4ss/libUE4SS.so` with
   `UE4SS_Signatures/FName_ToString.lua` (leak fix active on first boot)
-- Ops mods pre-baked; `mods.txt` enables all five
+- Ops mods pre-baked (config-fixed ServerMaintenance/WorkProbe); `mods.txt`
+  enables all five
+- `fork-overlay.sh` enforces `NetServerMaxTickRate=60` in Engine.ini on every
+  boot — the game strips the IpNetDriver section in its shutdown write-back on
+  manual-mode servers; without this the tick silently reverts to 120
 - `ALWAYS_UPDATE_ON_START=false` by default — the container never force-updates
   the game at boot (the obnyis default destroys the install when steamcmd
   flakes). First run still installs the game via steamcmd; `UPDATE_ON_BOOT`
