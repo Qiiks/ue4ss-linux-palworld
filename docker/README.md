@@ -54,6 +54,18 @@ Both are wired via the image's stock `CUSTOM_SCRIPT_ENABLED`/`CUSTOM_SCRIPT_PATH
 mechanism. If you mount your own game volume that already has the game
 installed, the overlay still works (fresh_install is skipped).
 
+## Validated 2026-08-04
+
+- Fresh volume (first-run steamcmd install): full boot, all 5 mods, leak-fix
+  override active, zero crashes.
+- **Existing populated volume** (migrate-a-server use case): verified by
+  pointing the image at a live game volume that was already running the same
+  stack — overlay idempotent (cp -f / mkdir -p / launcher-if-missing), world
+  loaded with the population intact, all mods + override landed, autosave
+  resumed. Container recreation is the only needed step.
+- Anonymous pull verified: `docker pull ghcr.io/qiiks/ue4ss-linux-palworld:server-latest`
+  works without credentials (public package).
+
 ## Build from source
 
 ```bash
