@@ -20,14 +20,14 @@ FROM obnyis/palworld-dedicated-server:libx11-gdb
 # Wrapper CMD: overlay fixed UE4SS stack, then hand off to the stock servermanager.
 # Entrypoint (PUID/PGID setup) runs first; CMD runs as the steam user.
 COPY scripts/fork-overlay.sh /scripts/fork-overlay.sh
-RUN chmod +x /scripts/fork-overlay.sh
+RUN chmod +x /scripts/fork-overlay.sh && chown steam:steam /scripts/fork-overlay.sh
 CMD ["/scripts/fork-overlay.sh"]
 
 # Post-install hook: the obnyis servermanager runs this custom script after
 # fresh_install/update inside start_server — it re-copies the mod set that
 # steamcmd wiped during the install.
 COPY scripts/fork-postinstall.sh /scripts/fork-postinstall.sh
-RUN chmod +x /scripts/fork-postinstall.sh
+RUN chmod +x /scripts/fork-postinstall.sh && chown steam:steam /scripts/fork-postinstall.sh
 ENV CUSTOM_SCRIPT_ENABLED=true \
     CUSTOM_SCRIPT_PATH=/scripts/fork-postinstall.sh \
     ALWAYS_UPDATE_ON_START=false \
