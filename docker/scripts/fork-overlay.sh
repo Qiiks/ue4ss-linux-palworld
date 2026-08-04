@@ -35,16 +35,18 @@ cp -f "${FORK_ROOT}/libUE4SS.so" "${UE4SS_DEST}/libUE4SS.so"
 
 # Signatures (leak-fix activation) and mods — overwrite, keep user configs if present
 [ -f "${FORK_ROOT}/UE4SS_Signatures/FName_ToString.lua" ] && cp -f "${FORK_ROOT}/UE4SS_Signatures/FName_ToString.lua" "${UE4SS_DEST}/UE4SS_Signatures/FName_ToString.lua"
-if [ -d "${FORK_ROOT}/Mods" ]; then
-    # copy mod dirs, preserving existing config.lua/log files on the volume
-    for moddir in "${FORK_ROOT}"/Mods/*/; do
-        [ -d "$moddir" ] || continue
-        modname="$(basename "$moddir")"
-        mkdir -p "${UE4SS_DEST}/Mods/${modname}"
         for f in "${moddir}"*; do
             [ -e "$f" ] || continue
             fname="$(basename "$f")"
-            if [ "${fname}" = "config.lua" ] && [ -f "${UE4SS_DEST}/Mods/${modname}/config.lua" ]; then
+            if [ -d "$f" ]; then
+                cp -rf "$f" "${UE4SS_DEST}/Mods/${modname}/"
+            elif [ "${fname}" = "config.lua" ] && [ -f "${UE4SS_DEST}/Mods/${modname}/config.lua" ]; then
+                ew "> fork-overlay: keeping existing config.lua for ${modname}"
+                continue
+            else
+                cp -f "$f" "${UE4SS_DEST}/Mods/${modname}/"
+            fi
+        done
                 ew "> fork-overlay: keeping existing config.lua for ${modname}"
                 continue
             fi
