@@ -42,6 +42,24 @@ Methodology corrections from oracle (adopted):
 Launch args verified present on test: -useperfthreads -NoAsyncLoadingThread
 -UseMultithreadForDS (the community-standard set).
 
+## RE verification (rev-1, full report at C:\Users\Sanveed\palworld-idle-cpu-report.md)
+
+- The ~16% 'busy-spin' cluster (0x7760f40) is FTaskThreadAnyThread::ProcessTasks
+  (TaskGraph.cpp): TSC-budgeted spin (dynamic budget ~700-990 ticks/round via
+  worker argument, hard cap 52 rounds) with pthread_cond_wait fallback. It is
+  bounded and task-feed-driven (real workload, not misconfig). NO INI knob
+  exists — TaskGraph.NumThreads/TargetHeartbeat/NumWorkerThreads are all absent
+  from the binary's rodata (dead UE4-era keys confirmed).
+- The pthread_sigmask storm is SDL SIGPIPE-protected file I/O (signal-13 block
+  around write() at 0xba44064, caller loops over chunks at 0xba44470), NOT UE
+  sleep/tick logic. NetServerMaxTickRate is NOT read by the sleep/event
+  implementations (0x77b5d70 nanosleep / 0x77b6160 pthread_cond_wait neither
+  call sigmask). The earlier 'sigmask scales with tick rate' framing is
+  RETRACTED; sigmask correlates with SDL write activity instead.
+- Consequence: the tick-rate A/B now measures the main-loop dispatch slice
+  only. Expected win reduced vs the original estimate; the A/B result is the
+  truth regardless.
+
 ## A/B design (one variable per arm, 15-min settled intervals, cpu-interval.sh)
 
 - Arm 1: tick 120 (current test state) — baseline
