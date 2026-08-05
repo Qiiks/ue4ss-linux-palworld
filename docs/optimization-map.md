@@ -347,7 +347,7 @@ The A/B "base" 35.5% (tick 60) was never engine base — it included diagnostics
 
 | Slice | Share | Source |
 |---|---|---|
-| syscall storm | ~19-20% | `_copy_to_user` 9.28% whose caller chain is pure `pthread_sigmask → rt_sigprocmask`; measured 288,853 sigprocmask syscalls/sec with ZERO write/read syscalls — a signal-mask hot loop, not I/O. Userspace caller frame = libEOSSDK-Linux-Shipping.so (EOS SDK busy-wait; RE in progress) |
+| syscall storm | ~19-20% test (144K/s sigprocmask on idle live too — server-wide) | `_copy_to_user` 9.28% whose caller chain is pure `pthread_sigmask → rt_sigprocmask`; measured 288,853 sigprocmask syscalls/sec with ZERO write/read syscalls — a signal-mask hot loop, not I/O. Userspace caller frame = libEOSSDK-Linux-Shipping.so (EOS SDK busy-wait; RE in progress) |
 | PSO player refresh | 4.43% | `FindAllOf("PalPlayerController")` full 358k-object array walk EVERY 1s (PLAYER_LOCATION_REFRESH_MS=1000). FIXED: adaptive cadence 30s idle / 1s active (a497278) |
 | mod Lua work | ~3-4% | luaV_execute/singlestep/atomic — PSO classification + SM census (both interval-bounded) |
 | task-graph workers | ~4% | 0x755ff44 bounded spin; NO knob (rev-1 + lib-1 agree) |
