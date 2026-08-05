@@ -339,3 +339,34 @@ stack, cpu-interval.sh (per-30s /proc/<pid>/stat on the game process):
 - 60s census spikes (48-51% vs 35% base) were WorkProbe's walk; now 300s.
 - Remaining open: player-present validation of tick 60 (per oracle gate),
   auto_trim A/B now actually possible (config fix), autosave-300 decision.
+
+### 16. Populated-world decomposition & clean-stack arm (2026-08-05)
+
+The A/B "base" 35.5% (tick 60) was never engine base — it included diagnostics.
+90s @99Hz decomposition of the 5-mod stack on the populated world:
+
+| Slice | Share | Source |
+|---|---|---|
+| syscall storm | ~19-20% | `_copy_to_user` 9.28% whose caller chain is pure `pthread_sigmask → rt_sigprocmask`; measured 288,853 sigprocmask syscalls/sec with ZERO write/read syscalls — a signal-mask hot loop, not I/O. Userspace caller frame = libEOSSDK-Linux-Shipping.so (EOS SDK busy-wait; RE in progress) |
+| PSO player refresh | 4.43% | `FindAllOf("PalPlayerController")` full 358k-object array walk EVERY 1s (PLAYER_LOCATION_REFRESH_MS=1000). FIXED: adaptive cadence 30s idle / 1s active (a497278) |
+| mod Lua work | ~3-4% | luaV_execute/singlestep/atomic — PSO classification + SM census (both interval-bounded) |
+| task-graph workers | ~4% | 0x755ff44 bounded spin; NO knob (rev-1 + lib-1 agree) |
+| save pipeline | ~1.5% | blake3 (IOThreadPool) — autosave |
+| mutex churn | ~1.2% | pthread_mutex_lock |
+
+Actions shipped: HookAActorTick=0 (no mod registers actor-tick callbacks; the
+vtable hook fired per-actor per-frame — e150d63), WorkProbe : 0 in image
+mods.txt (measurement mod; catch-up answered; stays opt-in — e150d63),
+PSO adaptive refresh (a497278), WorkProbe CFG.enabled gate fixed (a497278).
+
+Arm-5 (clean stack: ARS/PSO/SM/UE4SSStatus, WorkProbe off, HookAActorTick=0)
+capture in progress on test (game PID 4149891, settle 00:29:36 UTC, 900s of
+30s interval samples). Expected: base drop from WorkProbe census removal +
+HookAActorTick + adaptive refresh.
+
+Pending: rev-1 EOS SDK spin RE → config toggle candidate
+(CROSSPLAY_PLATFORMS=(Steam,Xbox,PS5,Mac) — EOS is the crossplay backend;
+Steam-only may stop the spin, feature-neutral for Steam players), launch-args
+bundle A/B (MULTITHREAD_ENABLED=false — the flags are ACTIVE on both servers,
+Pocketpair docs say leaving them unset "may improve performance"),
+gc.TimeBetweenPurgingPendingKillObjects≈180 (low-risk, unmeasured).
