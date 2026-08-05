@@ -1,8 +1,8 @@
 # CPU Lever Validation — Oracle + Research Verdicts (2026-08-05)
 
-Working record for the overnight CPU-optimization A/B (results land in
-optimization-map.md §15 once measured). Two independent advisory lanes were
-consulted before touching config, per the project's evidence-first discipline.
+Working record for the overnight CPU-optimization A/B. Two independent advisory
+lanes were consulted before touching config, per the project's evidence-first
+discipline.
 
 ## Oracle verdict (session ses_031756614ffe2o4MY0Ye6HkUzY)
 
@@ -93,6 +93,20 @@ change the measured outcome). Live already runs 60 — this confirms production
 config and aligns test. Feature impact: none observed in simulation (same work
 output; worker-AI significance-gated per earlier proof); player-present
 validation still pending per oracle gate.
+
+## Arm-5b + Arm-6 (2026-08-05) — clean-stack baseline and launch-args A/B
+
+Both measured on image v1.0.6 (mod cleanup + HookAActorTick=0 + sigmask shim,
+WorkProbe off), populated world, oracle methodology (10-min settle, 900s
+capture, 30s interval samples):
+
+- **Arm-5b (flags ON, -useperfthreads -NoAsyncLoadingThread -UseMultithreadForDS):**
+  mean 24.67% (n=24), RSS dead-flat ~1.99GB. Confirms the shim is CPU-neutral
+  on the already-cleaned stack — its win is the pre-cleanup/live profile
+  (live idle 16.5% → 11.3% after promotion).
+- **Arm-6 (flags OFF):** mean 25.00% (n=26) — Δ +0.33pts vs arm-5b = noise.
+  NULL RESULT: the launch args make no measurable difference on the populated
+  world. They stay ON (image default, matches production launch).
 
 ## Deployment trap discovered during arm 3 (2026-08-05)
 
