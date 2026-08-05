@@ -173,3 +173,45 @@ on it, VERIFIED: strip-section → restart → overlay re-adds
 tick 60 active, all 5 mods, WorkProbe interval_sec=300 honored.
 ghcr push deferred — the VPS lost its docker login (root config emptied);
 needs a write:packages PAT.
+
+## CLEAN-STACK ARM (arm-5) — mod-side cleanup verdict
+
+Applied to test (image v1.0.5): PSO adaptive player-refresh (30s idle / 1s
+with players — was a full-array FindAllOf walk every 1s at 4.43% + storm
+churn), WorkProbe removed from mods.txt (measurement mod; catch-up experiment
+done; it was the 60s census-spike source — 4 full ForEachUObject walks per
+probe), HookAActorTick=0 (no enabled mod registers actor-tick callbacks — the
+vtable hook was pure per-actor-per-frame overhead).
+
+VERIFIED (900s, 30 samples): **mean 25.00% flat** (vs arm-2's 42.19% /
+35.5% base) — -10.5pts from the mod cleanup alone, spikes gone entirely.
+RSS dead-flat ~1.98GB. The alternate-sample spike attribution (WorkProbe)
+confirmed: zero spikes remain with WorkProbe off.
+
+## SIGMASK STORM ROOT CAUSE (rev-1 RE, 2026-08-05) — NOT EOS SDK
+
+The residual storm (36K/s test, 144K/s idle live) is NOT libEOSSDK: the .so
+contains exactly 4 one-shot pthread_sigmask sites (bootstrap / SIGPIPE-safe
+write / teardown) and its threads sit idle in ep_poll/futex. The storm runs
+on the MAIN thread with UE4SS frames: the fork's signal-based per-step
+crash-recovery trampoline flips the process mask around every Lua/UObject
+step, and with bUseUObjectArrayCache=false (INERT on Linux — the searcher
+pools live in PostInitialize, skipped wholesale on Linux) every lookup
+iterates the full GUObjectArray through the trampoline. glibc strxfrm
+collation rides along in the scan path.
+
+## FIX: sigmask-dedup.so (image v1.0.6 + live, 2026-08-05)
+
+LD_PRELOAD shim (docker/shims/sigmask-dedup.c): per-thread mirror of the
+calling thread's mask; skips provably-no-op calls without a syscall.
+VERIFIED: identical-repeat harness 2,000,000 → 2 syscalls; game-side
+144K/s → 0 idle live; live idle CPU 16.5% → 11.3% (RSS flat 1.11GB).
+Zero semantic change for real mask changes. Baked into image v1.0.6 via
+multi-stage gcc:12 build; fork-overlay.sh installs it + rewrites the
+launcher every boot (shim first in LD_PRELOAD).
+
+Deploy trap (live incident 2026-08-05): an unquoted heredoc through
+docker exec expanded ${UE_PROJECT_ROOT} at write time → launcher ran
+'/Pal/Binaries/...: No such file' → exit 127 restart loop. Recovery:
+write the launcher to the host volume directly (sudo tee
+/var/lib/docker/volumes/<vol>/_data/PalServerUE4SS.sh + chown opc:opc).
