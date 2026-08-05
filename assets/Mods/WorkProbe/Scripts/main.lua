@@ -612,6 +612,10 @@ end
 -- observed avalanche: 6 runs in 8s at run ~105). A single registration is
 -- the whole schedule.
 local function schedule()
+    if not CFG.enabled then
+        print(TAG .. " disabled via config.lua (CFG.enabled=false); probe off")
+        return
+    end
     if type(LoopInGameThreadWithDelay) ~= "function" then
         print(TAG .. " ERROR: LoopInGameThreadWithDelay unavailable; probe disabled")
         return
