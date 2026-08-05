@@ -11,6 +11,16 @@
 #     -> update game deliberately, then re-verify FName_ToString.lua still resolves
 #        (AOBs shift on game updates; see docs/optimization-map.md §leak-fix)
 
+# Build stage: compile the sigmask-dedup shim from source (no runtime gcc
+# needed in the final image). The shim eliminates no-op pthread_sigmask
+# syscalls from UE4SS's signal-based crash-recovery trampoline — measured at
+# 289K syscalls/s on the populated world (~18-20% of one core), 144K/s idle,
+# 36K/s after the mod-side cleanup. Kills the storm to ~0 with zero semantic
+# change for real mask changes. Source: shims/sigmask-dedup.c
+FROM gcc:12 AS shim-builder
+COPY shims/sigmask-dedup.c /build/sigmask-dedup.c
+RUN gcc -shared -fPIC -O2 -o /build/sigmask-dedup.so /build/sigmask-dedup.c -ldl
+
 FROM obnyis/palworld-dedicated-server:libx11-gdb
 
 # ---- our UE4SS fork stack ----
@@ -18,6 +28,7 @@ FROM obnyis/palworld-dedicated-server:libx11-gdb
 # instead we bake a payload under /opt/ue4ss-fork and a wrapper CMD that overlays
 # it into the volume on every boot, BEFORE servermanager.sh decides whether to
 # download stock UE4SS (it skips the download when ./PalServerUE4SS.sh exists).
+COPY --from=shim-builder /build/sigmask-dedup.so /opt/ue4ss-fork/sigmask-dedup.so
 COPY ue4ss/ /opt/ue4ss-fork/
 
 # Wrapper CMD: overlay fixed UE4SS stack, then hand off to the stock servermanager.
