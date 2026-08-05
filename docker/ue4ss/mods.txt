@@ -1,5 +1,5 @@
 AlphaRespawnScheduler : 1
 PalServerOptimizer : 1
 ServerMaintenance : 1
-WorkProbe : 1
+WorkProbe : 0
 UE4SSStatus : 1

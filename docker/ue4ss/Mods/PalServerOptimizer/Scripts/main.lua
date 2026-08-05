@@ -62,6 +62,7 @@ local DROP_NEAR_SETTLE_DELAY_MS = 1500
 local DROP_FAR_SETTLE_DELAY_MS = 500
 local DROP_SOFT_PHYSICS_POOL_MAX = 128
 local PLAYER_LOCATION_REFRESH_MS = 1000
+local PLAYER_LOCATION_REFRESH_IDLE_MS = 30000
 local DORM_AWAKE = 1
 local DORM_DORMANT_ALL = 2
 local SUMMARY_INTERVAL_MS = 60000
@@ -393,8 +394,16 @@ local function schedule_player_location_refresh()
     end
     player_location_scheduler_started = true
 
-    local function schedule_next()
-        ExecuteInGameThreadWithDelay(PLAYER_LOCATION_REFRESH_MS, function()
+local function schedule_next()
+        -- Adaptive cadence: with zero players the FindAllOf walk over the full
+        -- object array every second is pure waste (measured ~4.4% CPU on the
+        -- populated world, 2026-08-05). Back off to a slow scan when the world
+        -- is empty; resume the fast cadence once a controller appears.
+        local interval_ms = PLAYER_LOCATION_REFRESH_MS
+        if #cached_player_locations == 0 then
+            interval_ms = PLAYER_LOCATION_REFRESH_IDLE_MS
+        end
+        ExecuteInGameThreadWithDelay(interval_ms, function()
             local ok, error_message = pcall(refresh_player_locations)
             if not ok then
                 log(string.format("player location refresh failed: %s", tostring(error_message)))
