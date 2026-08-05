@@ -370,3 +370,36 @@ Steam-only may stop the spin, feature-neutral for Steam players), launch-args
 bundle A/B (MULTITHREAD_ENABLED=false — the flags are ACTIVE on both servers,
 Pocketpair docs say leaving them unset "may improve performance"),
 gc.TimeBetweenPurgingPendingKillObjects≈180 (low-risk, unmeasured).
+
+## 16. CPU campaign — clean-stack + sigmask shim (2026-08-05)
+
+The overnight CPU campaign's levers, in execution order (full detail in
+docs/cpu-lever-validation-2026-08-05.md):
+
+**Lever 1 — launch args already active.** Test runs
+`-useperfthreads -NoAsyncLoadingThread -UseMultithreadForDS` (image
+default). The flags-off run is a clean one-variable A/B (arm-6).
+
+**Lever 2 — mod-side cleanup (-10.5pts, SHIPPED in image v1.0.5).**
+- PSO: player-location refresh was a full 358k-object FindAllOf walk every
+  1s (4.43% of one core, profile-verified) — now adaptive (30s idle, 1s
+  with players).
+- WorkProbe: removed from the default mod set (measurement mod; catch-up
+  experiment answered; 4 full-array walks per 60s probe).
+- HookAActorTick=0: no enabled mod registers actor-tick callbacks; the
+  per-actor-per-frame vtable hook was pure overhead.
+- Result: populated-world CPU 35.5% base → 25.0% flat (900s, 30 samples),
+  spikes gone.
+
+**Lever 3 — sigmask storm root cause + shim (SHIPPED image v1.0.6 + live).**
+- NOT EOS SDK (rev-1 RE: 4 one-shot sigmask sites, threads idle). The
+  storm is UE4SS's signal-based per-step crash-recovery trampoline
+  flipping the process mask per Lua/UObject step on the game thread.
+  bUseUObjectArrayCache=false is INERT on Linux (searcher-pool population
+  is in PostInitialize, skipped wholesale on Linux).
+- Fix: sigmask-dedup.so LD_PRELOAD shim (per-thread mask mirror, skips
+  provably-no-op calls). 144K/s → 0 idle live; live CPU 16.5% → 11.3%.
+- Verified CPU-neutral on the already-cleaned test stack (25.0% both).
+
+**Arm-5b (v1.0.6 baseline): mean 24.67%** — confirms the shim is
+neutral on the clean stack; its win is the pre-cleanup/live profile.
