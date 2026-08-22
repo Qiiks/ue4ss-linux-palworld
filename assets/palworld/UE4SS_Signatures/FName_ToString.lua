@@ -1,13 +1,18 @@
--- Palworld Linux dedicated server (Steam buildid 24466863, v1.0.2.101103)
--- Verified 2026-08-03 against the running process: FName::ToString(FString&) =
--- 0x7945dd0 (Conv_NameToString UFunction Func member -> native impl -> ToString;
--- append-into-existing-capacity semantics confirmed at 0x77950a0).
+-- Palworld Linux dedicated server (Steam buildid 24575149, v1.0.3.101283)
+-- Verified 2026-08-22 against the new binary: FName::ToString(FString&) =
+-- 0x794e6e0 (Conv_NameToString UFunction Func member @ 0xa4e7f00 -> native impl
+-- -> ToString; prologue + name-table lookup + append helper 0x779d9a0 all
+-- verified by disassembly).
 --
--- Why a hardcoded address: the binary strips the symbol from dynsym (dlsym
--- fails) and the fork's built-in AOB is weak. The Lua scan override is the
--- fork's documented mechanism for supplying verified addresses.
+-- History: buildid 24466863 had it at 0x7945dd0. The 2026-08-10 game update
+-- moved it; the stale address now sits on LZ4 code, and assigning it made every
+-- init call SIGSEGV. Two safety nets now exist in the fork:
+--   1. The Lua override is prologue-validated before assignment — a stale
+--      address is rejected and the dlsym/AOB/Conv fallback chain takes over.
+--   2. The fork's built-in AOB now carries the verified 23-byte prologue+body
+--      signature (unique in the binary) and self-resolves after future updates.
 --
 -- If the game updates and this address goes stale, the wrapper falls back to
--- the Conv_NameToString path (functional but leaks ~300B/call) or the
--- dlsym/AOB resolver — the server keeps running either way.
-return 0x7945dd0
+-- the AOB/dlsym resolver or the Conv_NameToString path (functional but leaks
+-- ~300B/call) — the server keeps running either way.
+return 0x794e6e0
