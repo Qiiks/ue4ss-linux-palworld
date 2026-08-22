@@ -1510,8 +1510,6 @@ namespace RC
                         // prologue prefix matched the 24466863-era function too. This
                         // self-resolves after game updates instead of depending on a
                         // hardcoded Lua override address.
-                        // 24575149 binaries. This self-resolves after game updates instead of
-                        // depending on a hardcoded Lua override address.
                         const uint8_t strong_pattern[] = {
                                 0x55, 0x41, 0x57, 0x41, 0x56, 0x41, 0x55, 0x41, 0x54, 0x53,
                                 0x48, 0x81, 0xEC, 0x08, 0x08, 0x00, 0x00, 0x49, 0x89, 0xF6,
