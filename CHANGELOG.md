@@ -1,5 +1,35 @@
 # UE4SS Linux Native Port - Changelog
 
+## v1.0.4-palworld-linux — Game-update resilience fix (2026-08-22)
+
+### Bug Fixes
+- **Stale FName::ToString Lua override SIGSEGV-flooded init** — Steam buildid
+  24575149 (game v1.0.3.101283, pushed 2026-08-10) moved `FName::ToString`
+  from 0x7945dd0 to 0x794e6e0; the shipped override pointed at LZ4 code, so
+  every init call crashed (rip=0x7945ddd), the iter-recovery flooded the log
+  with ~666k handler lines, and **no mods loaded** (issues #11/#14). Two
+  safety nets:
+  1. **Prologue validation** — the Lua override address is checked against
+     the known FName::ToString prologue before assignment; a stale address is
+     rejected and the dlsym/AOB/Conv fallback chain takes over (degradation,
+     never a crash flood).
+  2. **Strong built-in AOB** — the verified 23-byte prologue+body signature
+     (exactly 1 hit in the binary) resolves FName::ToString natively, so
+     future game updates self-resolve without a hardcoded script.
+- `UE4SS_Signatures/FName_ToString.lua` updated to the verified new address
+  0x794e6e0 (both release package and docker image payload).
+
+### Verified
+- Clean boot on 24575149: override accepted ("prologue verified"), all mods
+  start, zero signal-handler floods.
+- Poisoned-script boot (script returns the stale address): override rejected
+  with a named log line, strong AOB resolves the real address, all mods start,
+  zero floods.
+- Docker image `ghcr.io/qiiks/ue4ss-linux-palworld:server-v1.0.4` rebuilt with
+  the fixed lib (62b7e1ab) + updated script; container boot verified.
+
+---
+
 ## v1.0.3-palworld-linux — Release fix set (2026-08-03)
 
 ### Bug Fixes (all merged upstream as PRs #2-#13)
