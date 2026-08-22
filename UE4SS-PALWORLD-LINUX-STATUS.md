@@ -70,7 +70,28 @@ ProcessEvent-and-later slots are +8. Do not generalize.
 
 ## Root Causes Found and Fixed (newest first)
 
+### 2026-08-22 — stale FName::ToString override flood (game buildid 24575149)
+
+Steam pushed buildid 24575149 (game v1.0.3.101283) ~2026-08-10, moving
+`FName::ToString(FString&)` from 0x7945dd0 to 0x794e6e0. The shipped Lua
+override's stale address landed on LZ4 code — every init ToString call
+SIGSEGV'd (rip=0x7945ddd), iter-recovery retried forever, ~666k handler lines
+flooded the log, and **no mods loaded** (issues #11/#14). Two safety nets
+shipped (PR #15):
+
+1. **Prologue validation** — the Lua override address must match the known
+   FName::ToString prologue (`55 41 57 41 56 41 55 41 54 53 48 81 EC 08 08 00
+   00`) before `assign_address`; a stale value is rejected with a named log
+   line and the dlsym/AOB/Conv chain takes over.
+2. **Strong built-in AOB** — the 23-byte prologue+body signature (exactly 1
+   hit in the binary) resolves FName::ToString natively, so future updates
+   self-resolve without a hardcoded script.
+
+Lua scripts updated to `return 0x794e6e0`. Both paths verified on the new
+build (clean boot and poisoned-script boot).
+
 ### 2026-08 fix set — PRs #2-#13 (all merged upstream)
+
 
 1. **FName::ToString FString leak (~300B/call)** — PR #12: the game allocates the
    FString output via its TLS-cache allocator and the fork frees via glibc → allocator
